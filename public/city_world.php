@@ -361,6 +361,7 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="/socket.io/socket.io.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
 <script>
 /* =========================================================
    0) OPTIONAL LOGGED-IN HANDOFF FROM PHP
@@ -1171,119 +1172,57 @@ socket.on('chatMessage', ({ name, text }) => {
 function escapeHtml(s){ return s.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
 
 /* =========================================================
-   7) VOICE
+   7) VOICE — via LiveKit (audio is relayed through LiveKit's own
+   servers rather than connecting players' devices directly to each
+   other, which is what made voice fail on some mobile carrier networks)
    ========================================================= */
-let localStream = null;
-const peers = {};
+let lkRoom = null;
 const voiceBtn = document.getElementById('voice-btn');
 let voiceOn = false;
+
 voiceBtn.onclick = async () => {
   if (!voiceOn) {
     try {
-      localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      voiceOn = true; voiceBtn.classList.add('on');
-      Object.keys(others).forEach(id => { if (!peers[id]) callPeer(id); });
-    } catch(e) { alert('Microphone access denied or unavailable.'); }
+      const res = await fetch(`/livekit-token?identity=${encodeURIComponent(socket.id)}`);
+      const data = await res.json();
+      if (!data.token || !data.url) throw new Error(data.error || 'Voice chat is not set up yet.');
+
+      lkRoom = new LivekitClient.Room();
+      lkRoom.on(LivekitClient.RoomEvent.TrackSubscribed, (track) => {
+        if (track.kind !== 'audio') return;
+        const audioEl = track.attach();
+        audioEl.autoplay = true;
+        audioEl.classList.add('lk-voice-audio');
+        audioEl.setAttribute('playsinline', '');
+        document.body.appendChild(audioEl);
+        // Some mobile browsers still silently block autoplay even here.
+        audioEl.play().catch(() => {});
+      });
+      lkRoom.on(LivekitClient.RoomEvent.TrackUnsubscribed, (track) => {
+        track.detach().forEach(el => el.remove());
+      });
+
+      await lkRoom.connect(data.url, data.token);
+      await lkRoom.localParticipant.setMicrophoneEnabled(true);
+
+      voiceOn = true;
+      voiceBtn.classList.add('on');
+    } catch (e) {
+      alert('Voice chat unavailable: ' + e.message);
+      if (lkRoom) { lkRoom.disconnect(); lkRoom = null; }
+    }
   } else {
-    voiceOn = false; voiceBtn.classList.remove('on');
-    localStream.getTracks().forEach(t => t.stop());
-    Object.keys(peers).forEach(closePeerConnection);
+    voiceOn = false;
+    voiceBtn.classList.remove('on');
+    if (lkRoom) { await lkRoom.disconnect(); lkRoom = null; }
+    document.querySelectorAll('audio.lk-voice-audio').forEach(el => el.remove());
   }
 };
-// Retry bookkeeping so a failed connection only auto-retries once with a
-// forced TURN relay, instead of looping forever if the relay is also down.
-const relayRetried = {};
 
-function createPeerConnection(targetId, forceRelay) {
-  const config = { iceServers: [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
-    { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
-    { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
-    { urls: 'turns:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' } // TLS-wrapped, best for cellular/carrier networks
-  ] };
-  // Cellular NAT is usually symmetric, which breaks STUN-based direct connections.
-  // Forcing 'relay' skips straight to TURN, trading a little latency for reliability.
-  if (forceRelay) config.iceTransportPolicy = 'relay';
-
-  const pc = new RTCPeerConnection(config);
-  if (localStream) localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
-  pc.onicecandidate = e => { if (e.candidate) socket.emit('voice-ice', { target: targetId, candidate: e.candidate }); };
-  pc.oniceconnectionstatechange = () => {
-    console.log('ICE state with', targetId, ':', pc.iceConnectionState, forceRelay ? '(relay-forced)' : '');
-    if (pc.iceConnectionState === 'failed') {
-      if (!forceRelay && !relayRetried[targetId]) {
-        // First failure (likely a carrier NAT that STUN can't punch through) —
-        // tear down and retry once, forcing every packet through TURN relay.
-        console.warn('Voice connection failed for', targetId, '— retrying with forced TURN relay');
-        closePeerConnection(targetId); // clears relayRetried[targetId], so set it again right after
-        relayRetried[targetId] = true;
-        // Only the lower-socket-id side re-initiates the offer, matching the
-        // same glare-avoidance rule used elsewhere, so both sides don't race
-        // to create duplicate connections.
-        if (socket.id < targetId) callPeer(targetId, true);
-      } else {
-        // Already forcing relay and it still failed — the shared TURN server
-        // itself is unreachable or overloaded, not a NAT issue. Retrying
-        // again won't help; surface it instead of looping.
-        console.warn('Voice connection failed for', targetId, 'even with forced relay — TURN server unreachable or overloaded');
-      }
-    }
-  };
-  pc.ontrack = e => {
-    let audioEl = document.getElementById('audio-'+targetId);
-    if (!audioEl) {
-      audioEl = document.createElement('audio');
-      audioEl.id = 'audio-'+targetId;
-      audioEl.autoplay = true;
-      audioEl.setAttribute('playsinline', '');
-      document.body.appendChild(audioEl);
-    }
-    audioEl.srcObject = e.streams[0];
-    // Mobile Chrome sometimes silently blocks autoplay on elements created
-    // after the initial page load, even with autoplay set — explicitly
-    // calling play() here works around that.
-    audioEl.play().catch(err => console.warn('Voice audio playback blocked, will retry on next user tap:', err));
-  };
-  peers[targetId] = pc;
-  return pc;
-}
-async function callPeer(targetId, forceRelay) {
-  const pc = createPeerConnection(targetId, forceRelay);
-  const offer = await pc.createOffer();
-  await pc.setLocalDescription(offer);
-  socket.emit('voice-offer', { target: targetId, offer });
-}
-socket.on('voice-offer', async ({ from, offer }) => {
-  // Glare handling: if both sides call each other at nearly the same moment,
-  // only one offer should win. The peer with the higher socket id is "polite"
-  // and yields — it drops its own pending offer and accepts the incoming one.
-  // The peer with the lower socket id is "impolite" and ignores incoming
-  // offers while it already has one in flight; its own offer will win instead.
-  const polite = socket.id > from;
-  if (peers[from] && !polite) return;
-  if (peers[from]) closePeerConnection(from);
-  const pc = createPeerConnection(from);
-  await pc.setRemoteDescription(offer);
-  const answer = await pc.createAnswer();
-  await pc.setLocalDescription(answer);
-  socket.emit('voice-answer', { target: from, answer });
-});
-socket.on('voice-answer', async ({ from, answer }) => { const pc = peers[from]; if (pc) await pc.setRemoteDescription(answer); });
-socket.on('voice-ice', async ({ from, candidate }) => { const pc = peers[from]; if (pc) { try { await pc.addIceCandidate(candidate); } catch(e){} } });
-function closePeerConnection(id) {
-  if (peers[id]) { peers[id].close(); delete peers[id]; }
-  const el = document.getElementById('audio-'+id);
-  if (el) el.remove();
-  delete relayRetried[id];
-}
-// Extra safety net: some mobile browsers keep blocking audio playback even
-// after an explicit play() call. Retrying on the next tap anywhere on the
-// page catches those cases, since a tap always counts as a user gesture.
+// Extra safety net: retry any still-blocked audio on the next tap anywhere,
+// since a tap always counts as a user gesture for autoplay purposes.
 document.addEventListener('click', () => {
-  document.querySelectorAll('audio[id^="audio-"]').forEach(el => {
-    if (el.paused) el.play().catch(() => {});
-  });
+  document.querySelectorAll('audio.lk-voice-audio').forEach(el => { if (el.paused) el.play().catch(() => {}); });
 });
 
 /* =========================================================
