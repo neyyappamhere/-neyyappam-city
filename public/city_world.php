@@ -1190,15 +1190,46 @@ voiceBtn.onclick = async () => {
     Object.keys(peers).forEach(closePeerConnection);
   }
 };
-function createPeerConnection(targetId) {
-  const pc = new RTCPeerConnection({ iceServers: [
+// Retry bookkeeping so a failed connection only auto-retries once with a
+// forced TURN relay, instead of looping forever if the relay is also down.
+const relayRetried = {};
+
+function createPeerConnection(targetId, forceRelay) {
+  const config = { iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
     { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
-    { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' }
-  ] });
+    { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
+    { urls: 'turns:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' } // TLS-wrapped, best for cellular/carrier networks
+  ] };
+  // Cellular NAT is usually symmetric, which breaks STUN-based direct connections.
+  // Forcing 'relay' skips straight to TURN, trading a little latency for reliability.
+  if (forceRelay) config.iceTransportPolicy = 'relay';
+
+  const pc = new RTCPeerConnection(config);
   if (localStream) localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
   pc.onicecandidate = e => { if (e.candidate) socket.emit('voice-ice', { target: targetId, candidate: e.candidate }); };
+  pc.oniceconnectionstatechange = () => {
+    console.log('ICE state with', targetId, ':', pc.iceConnectionState, forceRelay ? '(relay-forced)' : '');
+    if (pc.iceConnectionState === 'failed') {
+      if (!forceRelay && !relayRetried[targetId]) {
+        // First failure (likely a carrier NAT that STUN can't punch through) —
+        // tear down and retry once, forcing every packet through TURN relay.
+        console.warn('Voice connection failed for', targetId, '— retrying with forced TURN relay');
+        closePeerConnection(targetId); // clears relayRetried[targetId], so set it again right after
+        relayRetried[targetId] = true;
+        // Only the lower-socket-id side re-initiates the offer, matching the
+        // same glare-avoidance rule used elsewhere, so both sides don't race
+        // to create duplicate connections.
+        if (socket.id < targetId) callPeer(targetId, true);
+      } else {
+        // Already forcing relay and it still failed — the shared TURN server
+        // itself is unreachable or overloaded, not a NAT issue. Retrying
+        // again won't help; surface it instead of looping.
+        console.warn('Voice connection failed for', targetId, 'even with forced relay — TURN server unreachable or overloaded');
+      }
+    }
+  };
   pc.ontrack = e => {
     let audioEl = document.getElementById('audio-'+targetId);
     if (!audioEl) {
@@ -1217,8 +1248,8 @@ function createPeerConnection(targetId) {
   peers[targetId] = pc;
   return pc;
 }
-async function callPeer(targetId) {
-  const pc = createPeerConnection(targetId);
+async function callPeer(targetId, forceRelay) {
+  const pc = createPeerConnection(targetId, forceRelay);
   const offer = await pc.createOffer();
   await pc.setLocalDescription(offer);
   socket.emit('voice-offer', { target: targetId, offer });
@@ -1244,6 +1275,7 @@ function closePeerConnection(id) {
   if (peers[id]) { peers[id].close(); delete peers[id]; }
   const el = document.getElementById('audio-'+id);
   if (el) el.remove();
+  delete relayRetried[id];
 }
 // Extra safety net: some mobile browsers keep blocking audio playback even
 // after an explicit play() call. Retrying on the next tap anywhere on the
