@@ -1201,8 +1201,18 @@ function createPeerConnection(targetId) {
   pc.onicecandidate = e => { if (e.candidate) socket.emit('voice-ice', { target: targetId, candidate: e.candidate }); };
   pc.ontrack = e => {
     let audioEl = document.getElementById('audio-'+targetId);
-    if (!audioEl) { audioEl = document.createElement('audio'); audioEl.id='audio-'+targetId; audioEl.autoplay=true; document.body.appendChild(audioEl); }
+    if (!audioEl) {
+      audioEl = document.createElement('audio');
+      audioEl.id = 'audio-'+targetId;
+      audioEl.autoplay = true;
+      audioEl.setAttribute('playsinline', '');
+      document.body.appendChild(audioEl);
+    }
     audioEl.srcObject = e.streams[0];
+    // Mobile Chrome sometimes silently blocks autoplay on elements created
+    // after the initial page load, even with autoplay set — explicitly
+    // calling play() here works around that.
+    audioEl.play().catch(err => console.warn('Voice audio playback blocked, will retry on next user tap:', err));
   };
   peers[targetId] = pc;
   return pc;
@@ -1235,6 +1245,14 @@ function closePeerConnection(id) {
   const el = document.getElementById('audio-'+id);
   if (el) el.remove();
 }
+// Extra safety net: some mobile browsers keep blocking audio playback even
+// after an explicit play() call. Retrying on the next tap anywhere on the
+// page catches those cases, since a tap always counts as a user gesture.
+document.addEventListener('click', () => {
+  document.querySelectorAll('audio[id^="audio-"]').forEach(el => {
+    if (el.paused) el.play().catch(() => {});
+  });
+});
 
 /* =========================================================
    8) MAP + STATS PANELS
