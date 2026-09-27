@@ -1182,7 +1182,7 @@ voiceBtn.onclick = async () => {
     try {
       localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
       voiceOn = true; voiceBtn.classList.add('on');
-      Object.keys(others).forEach(id => callPeer(id));
+      Object.keys(others).forEach(id => { if (!peers[id]) callPeer(id); });
     } catch(e) { alert('Microphone access denied or unavailable.'); }
   } else {
     voiceOn = false; voiceBtn.classList.remove('on');
@@ -1214,9 +1214,16 @@ async function callPeer(targetId) {
   socket.emit('voice-offer', { target: targetId, offer });
 }
 socket.on('voice-offer', async ({ from, offer }) => {
+  // Glare handling: if both sides call each other at nearly the same moment,
+  // only one offer should win. The peer with the higher socket id is "polite"
+  // and yields — it drops its own pending offer and accepts the incoming one.
+  // The peer with the lower socket id is "impolite" and ignores incoming
+  // offers while it already has one in flight; its own offer will win instead.
+  const polite = socket.id > from;
+  if (peers[from] && !polite) return;
+  if (peers[from]) closePeerConnection(from);
   const pc = createPeerConnection(from);
   await pc.setRemoteDescription(offer);
-  if (localStream) localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
   const answer = await pc.createAnswer();
   await pc.setLocalDescription(answer);
   socket.emit('voice-answer', { target: from, answer });
