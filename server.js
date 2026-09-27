@@ -9,6 +9,7 @@
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
+const { AccessToken } = require('livekit-server-sdk');
 
 const app = express();
 const server = http.createServer(app);
@@ -19,6 +20,15 @@ const io = new Server(server, {
     methods: ['GET', 'POST']
   }
 });
+
+// --- LiveKit config: voice chat is relayed through LiveKit's servers rather
+// than connecting players' devices directly to each other. This avoids the
+// mobile-carrier-firewall issues that broke direct peer-to-peer voice. Set
+// these three as environment variables on your host (Render, etc). ---
+const LIVEKIT_URL = process.env.LIVEKIT_URL || '';
+const LIVEKIT_API_KEY = process.env.LIVEKIT_API_KEY || '';
+const LIVEKIT_API_SECRET = process.env.LIVEKIT_API_SECRET || '';
+const VOICE_ROOM = 'neyyappam-city';
 
 // The game's HTML file is named city_world.php (matching your site's PHP
 // naming convention) even though it's plain static HTML/JS with no PHP
@@ -34,6 +44,25 @@ app.use(express.static('public', {
 app.get(['/', '/city_world.php'], (req, res) => {
   res.type('html');
   res.sendFile(__dirname + '/public/city_world.php');
+});
+
+// Issues a short-lived token that lets a specific player join the shared
+// voice room. Identity is tied to their socket.id so LiveKit knows who's who.
+app.get('/livekit-token', async (req, res) => {
+  const identity = String(req.query.identity || '').slice(0, 64);
+  if (!identity) return res.status(400).json({ error: 'identity required' });
+  if (!LIVEKIT_API_KEY || !LIVEKIT_API_SECRET || !LIVEKIT_URL) {
+    return res.status(500).json({ error: 'Voice chat is not configured on the server yet.' });
+  }
+  try {
+    const at = new AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET, { identity });
+    at.addGrant({ roomJoin: true, room: VOICE_ROOM, canPublish: true, canSubscribe: true });
+    const token = await at.toJwt();
+    res.json({ token, url: LIVEKIT_URL });
+  } catch (err) {
+    console.error('Failed to create LiveKit token:', err.message);
+    res.status(500).json({ error: 'Failed to create voice token' });
+  }
 });
 
 // --- Config for talking back to your PHP site ---
@@ -329,10 +358,6 @@ io.on('connection', (socket) => {
     if (!p || !text) return;
     io.emit('chatMessage', { id: socket.id, name: p.name, text: String(text).slice(0, 200) });
   });
-
-  socket.on('voice-offer', ({ target, offer }) => io.to(target).emit('voice-offer', { from: socket.id, offer }));
-  socket.on('voice-answer', ({ target, answer }) => io.to(target).emit('voice-answer', { from: socket.id, answer }));
-  socket.on('voice-ice', ({ target, candidate }) => io.to(target).emit('voice-ice', { from: socket.id, candidate }));
 
   socket.on('disconnect', () => {
     const p = players[socket.id];
