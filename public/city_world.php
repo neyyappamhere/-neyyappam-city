@@ -1191,7 +1191,12 @@ voiceBtn.onclick = async () => {
   }
 };
 function createPeerConnection(targetId) {
-  const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+  const pc = new RTCPeerConnection({ iceServers: [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
+    { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
+    { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' }
+  ] });
   if (localStream) localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
   pc.onicecandidate = e => { if (e.candidate) socket.emit('voice-ice', { target: targetId, candidate: e.candidate }); };
   pc.ontrack = e => {
