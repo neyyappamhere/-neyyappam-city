@@ -92,6 +92,8 @@
     background:linear-gradient(135deg,#FE019A,#9b5de5); color:#fff;
   }
   .shop-item button:disabled{ background:var(--border); color:var(--muted); cursor:not-allowed; }
+  .shop-cat-label{ font-size:.72em; font-weight:700; color:var(--muted); margin:14px 0 8px; text-transform:uppercase; letter-spacing:.04em; }
+  .shop-cat-label:first-of-type{ margin-top:0; }
   .inv-row{
     display:flex; align-items:center; justify-content:space-between; gap:8px;
     padding:8px 0; border-bottom:1px solid var(--border); font-size:.85em;
@@ -260,6 +262,8 @@
     #voice-btn{ top:64px; left:auto; right:14px; }
     #map-btn{ top:110px; left:auto; right:14px; }
     #stats-btn{ top:156px; left:auto; right:14px; }
+    #shop-btn{ top:202px; left:auto; right:14px; }
+    #inventory-btn{ top:248px; left:auto; right:14px; }
     #job-banner{ top:64px; max-width:70vw; font-size:.72em; }
     #waypoint-readout{ top:100px; }
   }
@@ -636,6 +640,36 @@ balloonSpots.forEach(spot => {
   balloonMeshes[spot.id] = s;
 });
 
+// --- Treasure chests: scattered around the city, positions come straight
+// from the server so every player sees the same ones in the same spots. ---
+function makeChestSprite() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 128; canvas.height = 128;
+  const ctx = canvas.getContext('2d');
+  ctx.font = '84px serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.shadowColor = '#FFD700'; ctx.shadowBlur = 16;
+  ctx.fillText('🧰', 64, 62);
+  const tex = new THREE.CanvasTexture(canvas);
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true }));
+  sprite.scale.set(0.9, 0.9, 0.9);
+  return sprite;
+}
+const chestMeshes = {};
+function rebuildChests(spots) {
+  Object.values(chestMeshes).forEach(m => scene.remove(m));
+  for (const k in chestMeshes) delete chestMeshes[k];
+  spots.forEach(spot => {
+    const s = makeChestSprite();
+    s.position.set(spot.x, 0.9, spot.z);
+    s.userData.bobOffset = Math.random()*Math.PI*2;
+    s.userData.chestId = spot.id;
+    s.userData.wx = spot.x; s.userData.wz = spot.z;
+    scene.add(s);
+    chestMeshes[spot.id] = s;
+  });
+}
+
 // --- Delivery job markers: a package crate at the pickup, a flag at the dropoff.
 // Positions come straight from the server (job.pickup / job.dropoff), so every
 // player sees them in the exact same spot — unlike the balloons above, which
@@ -991,6 +1025,7 @@ function updateMovement() {
     stats.distanceTraveled += speed;
     checkBalloonPickup();
     checkDeliveryProximity();
+    checkTreasureProximity();
   }
   const camDist = 6;
   camera.position.x = myAvatar.position.x - Math.sin(camYaw)*camDist*Math.cos(camPitch);
@@ -1011,6 +1046,16 @@ function checkDeliveryProximity() {
              && dropoffMarker.position.distanceTo(myAvatar.position) < 1.5) {
     socket.emit('completeDelivery', currentJob.id);
     stats.deliveriesCompleted++;
+  }
+}
+
+function checkTreasureProximity() {
+  for (const id in chestMeshes) {
+    const mesh = chestMeshes[id];
+    if (!mesh.visible) continue;
+    if (Math.hypot(mesh.userData.wx - myAvatar.position.x, mesh.userData.wz - myAvatar.position.z) < 2.2) {
+      socket.emit('claimTreasure', id);
+    }
   }
 }
 
@@ -1075,7 +1120,7 @@ socket.on('playerLeft', (id) => {
 socket.on('balloonCollected', ({ pickupId, by, balloons }) => {
   const mesh = balloonMeshes[pickupId];
   if (mesh) mesh.visible = false;
-  if (by === socket.id) balloonEl.textContent = balloons;
+  if (by === socket.id) { balloonEl.textContent = balloons; refreshAffordability(); }
 });
 
 // --- Vehicles ---
@@ -1134,6 +1179,101 @@ socket.on('deliveryUpdated', (job) => {
     jobBanner.style.display = 'block';
   }
 });
+
+// --- Treasure hunt ---
+socket.on('treasureSpots', (spots) => { rebuildChests(spots); });
+socket.on('treasureOpened', ({ chestId }) => { const m = chestMeshes[chestId]; if (m) m.visible = false; });
+socket.on('treasureReward', ({ reward, balloons }) => {
+  balloonEl.textContent = balloons;
+  refreshAffordability();
+  if (reward.type === 'balloons') showToast(`Chest opened! +${reward.amount} 🎈`);
+  else if (reward.type === 'item') showToast(`Chest opened! Found ${itemLabel(reward.itemId)}`);
+  else showToast(`Chest opened! Found a ${reward.name} ✨`);
+});
+
+// --- Shop / money economy ---
+let shopCatalog = [];
+let myInventory = {};
+const CATEGORY_LABELS = {
+  weapon: '🔫 Toy Weapons', flower: '🌹 Flowers', food: '🍔 Food', drink: '🥤 Drinks',
+  party: '🎉 Party', accessory: '🕶️ Accessories', clothing: '🧥 Clothing'
+};
+function itemLabel(itemId) {
+  const item = shopCatalog.find(i => i.id === itemId);
+  return item ? `${item.emoji} ${item.name}` : itemId;
+}
+socket.on('shopCatalog', (items) => { shopCatalog = items; renderShop(); });
+socket.on('purchaseOk', ({ itemId, balloons, inventory }) => {
+  balloonEl.textContent = balloons;
+  myInventory = inventory;
+  showToast(`Bought ${itemLabel(itemId)}!`);
+  renderShop();
+  renderInventory();
+});
+socket.on('purchaseDenied', ({ reason }) => {
+  showToast(reason === 'insufficient' ? "Not enough balloons 🎈 for that" : "Purchase failed");
+});
+socket.on('inventoryUpdated', (inv) => { myInventory = inv; renderInventory(); });
+
+function showToast(msg) {
+  const stack = document.getElementById('toast-stack');
+  const t = document.createElement('div');
+  t.className = 'toast';
+  t.textContent = msg;
+  stack.appendChild(t);
+  setTimeout(() => t.remove(), 3600);
+}
+
+function refreshAffordability() {
+  if (document.getElementById('shop-overlay').style.display !== 'none') renderShop();
+}
+
+function renderShop() {
+  const grid = document.getElementById('shop-grid');
+  if (!grid) return;
+  const balance = parseInt(balloonEl.textContent, 10) || 0;
+  document.getElementById('shop-balance').textContent = `🎈 ${balance} balloons to spend`;
+  grid.innerHTML = '';
+  const byCategory = {};
+  shopCatalog.forEach(item => { (byCategory[item.category] = byCategory[item.category] || []).push(item); });
+  Object.entries(byCategory).forEach(([cat, items]) => {
+    const label = document.createElement('div');
+    label.className = 'shop-cat-label';
+    label.textContent = CATEGORY_LABELS[cat] || cat;
+    grid.appendChild(label);
+    const row = document.createElement('div');
+    row.className = 'shop-grid';
+    items.forEach(item => {
+      const afford = balance >= item.price;
+      const div = document.createElement('div');
+      div.className = 'shop-item';
+      div.innerHTML = `
+        <div class="emoji">${item.emoji}</div>
+        <div class="name">${item.name}</div>
+        <div class="price">🎈 ${item.price}</div>
+        <button ${afford ? '' : 'disabled'}>${afford ? 'Buy' : 'Need more'}</button>
+      `;
+      div.querySelector('button').onclick = () => socket.emit('buyItem', item.id);
+      row.appendChild(div);
+    });
+    grid.appendChild(row);
+  });
+}
+
+function renderInventory() {
+  const list = document.getElementById('inventory-list');
+  if (!list) return;
+  const entries = Object.entries(myInventory).filter(([, n]) => n > 0);
+  if (!entries.length) { list.innerHTML = '<div class="inv-empty">No items yet — visit the Shop!</div>'; return; }
+  list.innerHTML = '';
+  entries.forEach(([itemId, count]) => {
+    const item = shopCatalog.find(i => i.id === itemId) || { name: itemId, emoji: '📦' };
+    const row = document.createElement('div');
+    row.className = 'inv-row';
+    row.innerHTML = `<div class="inv-left"><span>${item.emoji}</span><span>${item.name} × ${count}</span></div>`;
+    list.appendChild(row);
+  });
+}
 
 function addOtherPlayer(p) {
   const group = makeAvatarMesh(p.gender, p.outfitColor, p.hairStyle);
@@ -1226,7 +1366,7 @@ document.addEventListener('click', () => {
 });
 
 /* =========================================================
-   8) MAP + STATS PANELS
+   8) MAP + STATS + SHOP + INVENTORY PANELS
    ========================================================= */
 const WORLD_HALF = (GRID*BLOCK)/2 + 20; // matches the ground size built earlier
 let mapOpen = false;
@@ -1267,6 +1407,13 @@ function drawMap() {
   Object.values(others).forEach(o => {
     const { px, py } = worldToMap(o.group.position.x, o.group.position.z);
     mapCtx.beginPath(); mapCtx.arc(px, py, 4, 0, Math.PI*2); mapCtx.fill();
+  });
+
+  mapCtx.fillStyle = '#FFD700';
+  Object.values(chestMeshes).forEach(m => {
+    if (!m.visible) return;
+    const { px, py } = worldToMap(m.userData.wx, m.userData.wz);
+    mapCtx.fillRect(px-4, py-4, 8, 8);
   });
 
   if (currentJob) {
@@ -1320,6 +1467,11 @@ document.getElementById('stats-btn').onclick = () => {
 };
 document.getElementById('stats-close').onclick = () => { document.getElementById('stats-overlay').style.display = 'none'; };
 
+document.getElementById('shop-btn').onclick = () => { renderShop(); document.getElementById('shop-overlay').style.display = 'flex'; };
+document.getElementById('shop-close').onclick = () => { document.getElementById('shop-overlay').style.display = 'none'; };
+document.getElementById('inventory-btn').onclick = () => { renderInventory(); document.getElementById('inventory-overlay').style.display = 'flex'; };
+document.getElementById('inventory-close').onclick = () => { document.getElementById('inventory-overlay').style.display = 'none'; };
+
 /* =========================================================
    9) RENDER LOOP
    ========================================================= */
@@ -1332,6 +1484,7 @@ function animate() {
   if (waypointBeacon.visible) waypointBeacon.position.y = 1.2 + Math.sin(t*3)*0.15;
   if (mapOpen) drawMap();
   Object.values(balloonMeshes).forEach(m => { if (m.visible) m.position.y = 1 + Math.sin(t*2 + m.userData.bobOffset)*0.2; });
+  Object.values(chestMeshes).forEach(m => { if (m.visible) m.position.y = 0.9 + Math.sin(t*1.6 + m.userData.bobOffset)*0.12; });
   Object.values(others).forEach(o => {
     o.group.position.lerp(new THREE.Vector3(o.target.x, o.target.y, o.target.z), 0.2);
     o.group.rotation.y = o.target.rotY;
