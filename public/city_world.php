@@ -389,10 +389,47 @@ scene.fog = new THREE.Fog(0xdfd9c0, 45, 160);
 const camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.1, 1000);
 camera.position.set(0, 3, 6);
 
-const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setSize(innerWidth, innerHeight);
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-document.getElementById('canvas-wrap').appendChild(renderer.domElement);
+// --- WebGL availability check: a black screen with the HUD still floating on
+// top (exactly what shows up if WebGL/Three.js fails) means the renderer
+// never got created and the rest of this script threw silently. Surface it
+// instead of leaving a blank canvas. ---
+function webglAvailable() {
+  try {
+    const c = document.createElement('canvas');
+    return !!(window.WebGLRenderingContext && (c.getContext('webgl') || c.getContext('experimental-webgl')));
+  } catch (e) { return false; }
+}
+
+let renderer;
+if (!window.THREE) {
+  showFatalError('3D library failed to load (three.js). Check your internet connection or ad-blocker and reload.');
+} else if (!webglAvailable()) {
+  showFatalError('Your browser or device can\'t run 3D graphics (WebGL). Try a different browser, enable hardware acceleration, or switch device.');
+} else {
+  try {
+    renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(innerWidth, innerHeight);
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    document.getElementById('canvas-wrap').appendChild(renderer.domElement);
+  } catch (e) {
+    console.error('Renderer init failed:', e);
+    showFatalError('Could not start the 3D renderer: ' + e.message);
+  }
+}
+
+function showFatalError(msg) {
+  document.getElementById('canvas-wrap').innerHTML =
+    '<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;' +
+    'padding:24px;text-align:center;color:#fff;font-family:Space Grotesk,sans-serif;font-size:.95em;">' +
+    '⚠️ ' + msg + '</div>';
+  throw new Error(msg);
+}
+
+// Surface any other uncaught error the same way, instead of a silent black
+// screen with nothing but the HUD showing.
+window.addEventListener('error', (e) => {
+  console.error('Neyyappam City error:', e.error || e.message);
+});
 
 // --- Daytime gradient sky: blue overhead fading to a warm haze at the horizon ---
 function makeSky() {
@@ -1114,7 +1151,6 @@ socket.on('playerJoined', (p) => { addOtherPlayer(p); refreshOnlineCount(); });
 socket.on('playerMoved', (p) => { const o = others[p.id]; if (o) o.target = p; });
 socket.on('playerLeft', (id) => {
   if (others[id]) { scene.remove(others[id].group); delete others[id]; }
-  closePeerConnection(id);
   refreshOnlineCount();
 });
 socket.on('balloonCollected', ({ pickupId, by, balloons }) => {
