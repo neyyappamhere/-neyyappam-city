@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
 <title>Neyyappam City</title>
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Syne:wght@700;800&family=Noto+Sans+Malayalam:wght@500;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <style>
   :root{
@@ -15,7 +15,7 @@
     --text:rgba(255,255,255,.85); --muted:rgba(255,255,255,.35);
   }
   *{ box-sizing:border-box; }
-  html,body{ margin:0; height:100%; overflow:hidden; font-family:'Space Grotesk',sans-serif; background:var(--bg); color:var(--text); }
+  html,body{ margin:0; height:100%; overflow:hidden; font-family:'Space Grotesk','Noto Sans Malayalam',sans-serif; background:var(--bg); color:var(--text); }
   #canvas-wrap{ position:absolute; inset:0; }
 
   #topbar{
@@ -274,7 +274,7 @@
 <div id="name-gate">
   <div class="card">
     <h3>Neyyappam City</h3>
-    <p class="sub">Free-roam the city, collect balloons — no account needed</p>
+    <p class="sub">Kerala edition — sip chaya at the chayakkada, ride a kaalavandi, collect balloons</p>
     <input id="name-input" placeholder="Pick a name to play as" maxlength="20" />
     <div class="gender-row">
       <button type="button" class="gender-pill" data-gender="male">Male</button>
@@ -389,6 +389,12 @@
 </div>
 <button id="vehicle-prompt" style="display:none; position:absolute; left:50%; bottom:100px; transform:translateX(-50%); z-index:6; background:rgba(20,15,10,.85); color:#fff; padding:10px 20px; border:none; border-radius:20px; font-weight:700; font-size:.85em; cursor:pointer;">Press E to enter</button>
 
+<div id="radio-ui" style="display:none; position:absolute; left:50%; bottom:200px; transform:translateX(-50%); z-index:6; gap:8px;">
+  <button id="radio-toggle" style="background:#5b3416; color:#ffd166; border:1px solid #c98a3a; border-radius:20px; padding:10px 18px; font-weight:700; font-size:.82em; cursor:pointer;">📻 Radio</button>
+  <button id="radio-next" style="background:#5b3416; color:#ffd166; border:1px solid #c98a3a; border-radius:20px; padding:10px 18px; font-weight:700; font-size:.82em; cursor:pointer;">⏭ Next (N)</button>
+</div>
+<div id="radio-chip" style="display:none; position:absolute; top:140px; left:50%; transform:translateX(-50%); z-index:6; background:rgba(60,35,12,.88); color:#ffd166; padding:6px 14px; border-radius:16px; font-weight:700; font-size:.78em; pointer-events:none;"></div>
+
 <div id="joystick-zone">
   <div id="joystick-base"></div>
   <div id="joystick-stick"></div>
@@ -415,7 +421,7 @@ const handoffBalloons = parseInt(params.get('balloons') || '0', 10);
    1) CITY GENERATION — bright low-poly daytime style (blue sky, brick buildings, toon cars)
    ========================================================= */
 const scene = new THREE.Scene();
-scene.fog = new THREE.Fog(0xdfd9c0, 45, 160);
+scene.fog = new THREE.Fog(0xdcebd4, 45, 170);
 
 const camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.1, 1000);
 camera.position.set(0, 3, 6);
@@ -468,10 +474,10 @@ function makeSky() {
   canvas.width = 2; canvas.height = 256;
   const ctx = canvas.getContext('2d');
   const grad = ctx.createLinearGradient(0, 0, 0, 256);
-  grad.addColorStop(0, '#2e86d8');
-  grad.addColorStop(0.55, '#a9d3e8');
-  grad.addColorStop(0.8, '#e8d9ae');
-  grad.addColorStop(1, '#dfc98f');
+  grad.addColorStop(0, '#1f7fd1');
+  grad.addColorStop(0.55, '#9bd8ea');
+  grad.addColorStop(0.8, '#f4e6b8');
+  grad.addColorStop(1, '#dcd9a8');
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, 2, 256);
   const tex = new THREE.CanvasTexture(canvas);
@@ -493,10 +499,17 @@ const BLOCK = 20, GRID = 6, ROAD_W = 6;
 // --- Flat gray asphalt (clean, not gritty — matches the toy-city reference) ---
 const ground = new THREE.Mesh(
   new THREE.PlaneGeometry(GRID*BLOCK + 60, GRID*BLOCK + 60),
-  new THREE.MeshStandardMaterial({ color: 0x55565c })
+  new THREE.MeshStandardMaterial({ color: 0x79ad4a })   // tropical green ground
 );
 ground.rotation.x = -Math.PI/2;
 scene.add(ground);
+{ // asphalt roads laid over the green (a road on every multiple of BLOCK, ROAD_W wide)
+  const roadMat = new THREE.MeshStandardMaterial({ color: 0x55565c });
+  for (let i = -GRID/2; i <= GRID/2; i++) {
+    const rv = new THREE.Mesh(new THREE.BoxGeometry(ROAD_W, 0.02, GRID*BLOCK + ROAD_W), roadMat); rv.position.set(i*BLOCK, 0.01, 0); scene.add(rv);
+    const rh = new THREE.Mesh(new THREE.BoxGeometry(GRID*BLOCK + ROAD_W, 0.02, ROAD_W), roadMat); rh.position.set(0, 0.01, i*BLOCK); scene.add(rh);
+  }
+}
 
 function addLaneMarkings() {
   const mat = new THREE.MeshStandardMaterial({ color: 0xf5f5f0 });
@@ -613,6 +626,62 @@ function addWindows(building, w, h, wallZOffset, faceSign) {
   }
 }
 
+/* =========================================================
+   KERALA helpers — Malayalam signboards, tile-roofed houses, tree spots
+   ========================================================= */
+const kMat = (c, o) => new THREE.MeshStandardMaterial(Object.assign({ color: c }, o || {}));
+
+// Canvas signboard in Malayalam script; redraws once the web font has loaded.
+function makeSignTex(text, bg, fg) {
+  const cv = document.createElement('canvas'); cv.width = 512; cv.height = 128;
+  const tex = new THREE.CanvasTexture(cv);
+  const draw = () => {
+    const g = cv.getContext('2d');
+    g.fillStyle = bg; g.fillRect(0, 0, 512, 128);
+    g.strokeStyle = fg; g.lineWidth = 6; g.strokeRect(8, 8, 496, 112);
+    g.fillStyle = fg; g.font = "700 56px 'Noto Sans Malayalam','Nirmala UI',sans-serif";
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText(text, 256, 68, 470);
+    tex.needsUpdate = true;
+  };
+  draw();
+  if (document.fonts && document.fonts.load) document.fonts.load("700 56px 'Noto Sans Malayalam'", text).then(draw).catch(() => {});
+  return tex;
+}
+const SIGNS = [
+  ['പലചരക്ക് കട', '#7a2e1d', '#fff2cc'], ['ബേക്കറി', '#f4c95d', '#5a1f0f'], ['തുണിക്കട', '#2b4c7e', '#ffe9b0'],
+  ['ഹോട്ടൽ', '#b33a3a', '#ffffff'], ['മെഡിക്കൽ സ്റ്റോർ', '#0f7b6c', '#ffffff'], ['മീൻ കട', '#1d6fa5', '#ffffff'],
+].map(([t, b, f]) => makeSignTex(t, b, f));
+
+const houseColors = [0xf4ecd8, 0xf2d97a, 0x7fc8c2, 0xf0a6a0, 0xbcd8a0, 0xa9c8e8];
+const roofMat = kMat(0xb5482a), roofMat2 = kMat(0x9c3b22);
+const roofGeo = new THREE.ConeGeometry(1, 1, 4);
+const doorMat = kMat(0x5a3a1a), winFrameMat = kMat(0x6b4423), winGlassMat = kMat(0x7fa9c9);
+
+const palmSpots = [], broadSpots = [], bananaSpots = [];
+function addPalm(x, z)   { palmSpots.push({ x, z, h: 5.2 + Math.random()*3 }); }
+function addBroad(x, z)  { broadSpots.push({ x, z, h: 2.2 + Math.random() }); }
+function addBanana(x, z) { bananaSpots.push({ x, z }); }
+
+// Low-rise Kerala shop-house: pastel walls, terracotta pyramid roof, Malayalam signboard.
+function addKeralaHouse(cx, cz, footprint) {
+  const w = footprint * (0.55 + Math.random()*0.2), h = 3.6 + Math.random()*2.2;
+  const body = new THREE.Mesh(new THREE.BoxGeometry(w, h, w), kMat(houseColors[Math.floor(Math.random()*houseColors.length)]));
+  body.position.set(cx, 0.25 + h/2, cz); scene.add(body);
+  const roof = new THREE.Mesh(roofGeo, Math.random() > 0.5 ? roofMat : roofMat2);
+  const r = (w + 1.2) * 0.7071;
+  roof.scale.set(r, 2.6, r); roof.rotation.y = Math.PI/4; roof.position.set(cx, 0.25 + h + 1.3, cz); scene.add(roof);
+  const fz = cz + w/2 + 0.03;
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(Math.min(4.4, w*0.8), 1.05),
+    new THREE.MeshBasicMaterial({ map: SIGNS[Math.floor(Math.random()*SIGNS.length)] }));
+  sign.position.set(cx, 3.15, fz + 0.02); scene.add(sign);
+  const door = new THREE.Mesh(new THREE.PlaneGeometry(1.3, 2.2), doorMat); door.position.set(cx, 1.35, fz); scene.add(door);
+  [-1, 1].forEach(s => {
+    const fr = new THREE.Mesh(new THREE.BoxGeometry(1.15, 1.25, 0.1), winFrameMat); fr.position.set(cx + s*w*0.32, 1.9, fz); scene.add(fr);
+    const gl = new THREE.Mesh(new THREE.PlaneGeometry(0.85, 0.95), winGlassMat); gl.position.set(cx + s*w*0.32, 1.9, fz + 0.06); scene.add(gl);
+  });
+}
+
 const balloonSpots = [];
 let idCounter = 0;
 let cornerToggle = false;
@@ -626,53 +695,27 @@ for (let gx = -GRID/2; gx < GRID/2; gx++) {
     // Light gray tiled sidewalk with a slightly raised curb
     const sidewalk = new THREE.Mesh(
       new THREE.BoxGeometry(footprint, 0.25, footprint),
-      new THREE.MeshStandardMaterial({ color: 0xd8d6cc })
+      new THREE.MeshStandardMaterial({ color: 0x86b856 })
     );
     sidewalk.position.set(cx, 0.12, cz);
     scene.add(sidewalk);
     const curb = new THREE.Mesh(
       new THREE.BoxGeometry(footprint + 0.3, 0.32, footprint + 0.3),
-      new THREE.MeshStandardMaterial({ color: 0xb7b4a8 })
+      new THREE.MeshStandardMaterial({ color: 0xa5603a })
     );
     curb.position.set(cx, 0.06, cz);
     scene.add(curb);
 
-    const h = 8 + Math.random()*20;
-    const w = footprint * (0.55 + Math.random()*0.25);
-
-    // Tan ground-floor shopfront base
-    const base = new THREE.Mesh(
-      new THREE.BoxGeometry(w + 0.4, 3, w + 0.4),
-      new THREE.MeshStandardMaterial({ color: 0xc9a565 })
-    );
-    base.position.set(cx, 1.5, cz);
-    scene.add(base);
-
-    // Brick upper structure
-    const building = new THREE.Mesh(
-      new THREE.BoxGeometry(w, h, w),
-      new THREE.MeshStandardMaterial({ color: brickColors[Math.floor(Math.random()*brickColors.length)] })
-    );
-    building.position.set(cx, h/2 + 1, cz);
-    scene.add(building);
-    addWindows(building, w, h, w/2 + 0.01, 1);
-    addWindows(building, w, h, -w/2 - 0.01, -1);
-
-    // Storefront glass strip on the tan base, facing the sidewalk
-    const shopGlass = new THREE.Mesh(
-      new THREE.PlaneGeometry(w*0.7, 1.4),
-      new THREE.MeshStandardMaterial({ color: 0x8fb7d6 })
-    );
-    shopGlass.position.set(cx, 1.4, cz + w/2 + 0.21);
-    scene.add(shopGlass);
-
-    // Rooftop AC/water-tank prop
-    const roofProp = new THREE.Mesh(
-      new THREE.BoxGeometry(w*0.22, 0.7, w*0.22),
-      new THREE.MeshStandardMaterial({ color: 0x8a8a8f })
-    );
-    roofProp.position.set(cx + w*0.2, h + 1.35, cz - w*0.2);
-    scene.add(roofProp);
+    // Block (-1,0) is the chayakkada, built separately below; every other block gets a Kerala house.
+    if (!(gx === -1 && gz === 0)) addKeralaHouse(cx, cz, footprint);
+    // coconut palms on two random corners, plus a mango-type tree or banana clump on a third
+    {
+      const e = footprint/2 - 1.3, cs = [[-1,-1],[1,-1],[-1,1],[1,1]].sort(() => Math.random() - 0.5);
+      addPalm(cx + cs[0][0]*e, cz + cs[0][1]*e);
+      addPalm(cx + cs[1][0]*e, cz + cs[1][1]*e);
+      if (Math.random() > 0.4) addBroad(cx + cs[2][0]*e, cz + cs[2][1]*e);
+      else addBanana(cx + cs[2][0]*e, cz + cs[2][1]*e);
+    }
 
     // Streetlight at one corner, alternating which side it faces the road
     cornerToggle = !cornerToggle;
@@ -843,6 +886,251 @@ function addPlane(x, z, rotY) {
   cars['plane_0'] = { id: 'plane_0', group: g, occupiedBy: null, isPlane: true, prop };
 }
 addPlane(-35, -76, 0);
+
+/* =========================================================
+   1c) KERALA WORLD — chayakkada (samavar + old radio), kaalavandi bullock carts, palms
+   ========================================================= */
+const TEA_POS = { x: -10, z: 8 }, TEA_RANGE = 6;       // customer spot at the chayakkada counter
+const RADIO_POS = { x: -12.8, z: 9.7 };                 // the old valve radio on the counter
+const RADIO_CTRL_RANGE = 6, RADIO_HEAR_RANGE = 26;
+// Shared radio playlist — everyone hears the same live stream. Add more live Malayalam FM / old-song
+// stream URLs here (https, direct mp3/aac) and press N at the radio to cycle.
+const STATIONS = [
+  { name: 'Radio Mango 91.9', url: 'https://stream.radiomango.fm/live' },
+];
+const teaFx = { steam: [], dial: null, note: null };
+
+function steamTexture() {
+  const c = document.createElement('canvas'); c.width = c.height = 64;
+  const g = c.getContext('2d'), gr = g.createRadialGradient(32, 32, 2, 32, 32, 30);
+  gr.addColorStop(0, 'rgba(255,255,255,0.9)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
+  return new THREE.CanvasTexture(c);
+}
+
+function buildChayakkada(cx, cz) {
+  // Local frame: shop body at the back (z<0), open veranda + yard in front (z>0). Rotated so the front faces the spawn road.
+  const T = new THREE.Group(); T.position.set(cx, 0, cz); T.rotation.y = Math.PI; scene.add(T);
+  const add = (mesh, x, y, z) => { mesh.position.set(x, y, z); T.add(mesh); return mesh; };
+  const box = (w, h, d, c, x, y, z) => add(new THREE.Mesh(new THREE.BoxGeometry(w, h, d), kMat(c)), x, y, z);
+  const wood = 0x8b5a2b, dark = 0x5a3a1a;
+
+  const yard = add(new THREE.Mesh(new THREE.PlaneGeometry(13, 9), kMat(0xc98a5e)), 0, 0.27, 2.2); yard.rotation.x = -Math.PI/2;
+
+  // walls, gable ends, terracotta tile roof
+  box(9, 4, 5, 0xf0e6cf, 0, 2.25, -4);
+  [-4.5, 4.5].forEach(x => {
+    const tri = new THREE.Mesh(new THREE.ShapeGeometry(new THREE.Shape([new THREE.Vector2(-6.5, 4.25), new THREE.Vector2(-1.5, 4.25), new THREE.Vector2(-4, 5.05)])),
+      kMat(0xf0e6cf, { side: THREE.DoubleSide }));
+    tri.rotation.y = -Math.PI/2; add(tri, x, 0, 0);
+  });
+  const tile = kMat(0xb5482a);
+  add(new THREE.Mesh(new THREE.BoxGeometry(10.4, 0.16, 5.43), tile), 0, 4.27, -1.4).rotation.x = 0.2915;
+  add(new THREE.Mesh(new THREE.BoxGeometry(10.4, 0.16, 2.92), tile), 0, 4.63, -5.4).rotation.x = -0.2915;
+  box(10.5, 0.14, 0.3, 0x8a2f18, 0, 5.1, -4);
+  [-4.3, 4.3].forEach(x => box(0.14, 3.3, 0.14, dark, x, 1.9, 1.1));   // veranda posts
+
+  // Malayalam signboard: ചായക്കട
+  box(6.6, 1.25, 0.12, 0x3a2413, 0, 3.0, 1.3);
+  add(new THREE.Mesh(new THREE.PlaneGeometry(6.2, 1.05), new THREE.MeshBasicMaterial({ map: makeSignTex('ചായക്കട', '#1f5b3a', '#ffd166') })), 0, 3.0, 1.37);
+
+  // counter
+  box(8.4, 1.05, 0.9, wood, 0, 0.78, 0.3);
+  box(8.6, 0.08, 1.05, 0xa9743a, 0, 1.34, 0.3);
+
+  // shelf of snack jars on the back wall
+  box(8, 0.06, 0.3, dark, 0, 2.3, -1.35);
+  for (let i = 0; i < 10; i++) {
+    add(new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.36, 8), kMat(i % 2 ? 0xf2c14e : 0xc98a3a)), -3.6 + i*0.8, 2.51, -1.35);
+    add(new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.05, 8), kMat(0xf2f2f2)), -3.6 + i*0.8, 2.72, -1.35);
+  }
+
+  // hanging banana bunches (pazham) — the classic chayakkada look
+  box(8.4, 0.04, 0.04, dark, 0, 3.15, 0.9);
+  [-3.6, -1.0, 1.0, 3.6].forEach(x => {
+    for (let k = 0; k < 7; k++) {
+      const a = k * 0.9, b = add(new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.03, 0.34, 5), kMat(0xf2d13b)), x + Math.cos(a)*0.09, 2.95, 0.9 + Math.sin(a)*0.09);
+      b.rotation.x = Math.sin(a)*0.3; b.rotation.z = -Math.cos(a)*0.3;
+    }
+  });
+
+  // SAMAVAR — brass tea urn with tap, handles and rising steam
+  const sam = new THREE.Group(); sam.position.set(-2.8, 1.38, 0.3); T.add(sam);
+  const brass = kMat(0xd9a93c, { metalness: 0.3, roughness: 0.35, emissive: 0x3a2a08 });
+  const sadd = (g, x, y, z) => { const m = new THREE.Mesh(g, brass); m.position.set(x, y, z); sam.add(m); return m; };
+  sadd(new THREE.CylinderGeometry(0.28, 0.32, 0.14, 14), 0, 0.07, 0);
+  sadd(new THREE.CylinderGeometry(0.34, 0.38, 0.78, 16), 0, 0.53, 0);
+  sadd(new THREE.SphereGeometry(0.34, 14, 8, 0, Math.PI*2, 0, Math.PI/2), 0, 0.92, 0).scale.y = 0.6;
+  sadd(new THREE.CylinderGeometry(0.1, 0.13, 0.34, 10), 0, 1.2, 0);
+  sadd(new THREE.ConeGeometry(0.14, 0.2, 10), 0, 1.47, 0);
+  [-1, 1].forEach(s => sadd(new THREE.TorusGeometry(0.1, 0.025, 6, 10), s*0.4, 0.75, 0));
+  sadd(new THREE.CylinderGeometry(0.035, 0.035, 0.3, 8), 0.5, 0.28, 0).rotation.z = Math.PI/2;
+  sadd(new THREE.SphereGeometry(0.06, 8, 8), 0.68, 0.28, 0);
+  const stTex = steamTexture();
+  for (let i = 0; i < 4; i++) {
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: stTex, transparent: true, depthWrite: false }));
+    sp.position.set(0, 1.7, 0); sam.add(sp); teaFx.steam.push({ sp, phase: i / 4 });
+  }
+  // tea glasses
+  [-1.7, -1.4, -1.1].forEach(x => add(new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.055, 0.15, 8), kMat(0xfff1c4, { transparent: true, opacity: 0.7 })), x, 1.46, 0.5));
+
+  // OLD VALVE RADIO — wooden cabinet, speaker cloth, glowing dial, knobs
+  const rad = new THREE.Group(); rad.position.set(2.8, 1.38, 0.3); T.add(rad);
+  const radAdd = (mesh, x, y, z) => { mesh.position.set(x, y, z); rad.add(mesh); return mesh; };
+  radAdd(new THREE.Mesh(new THREE.BoxGeometry(0.84, 0.52, 0.32), kMat(0x5b3416)), 0, 0.26, 0);
+  const gc = document.createElement('canvas'); gc.width = gc.height = 64;
+  { const g = gc.getContext('2d'); g.fillStyle = '#d8c08a'; g.fillRect(0, 0, 64, 64); g.strokeStyle = '#8a6a34'; g.lineWidth = 3;
+    for (let i = 4; i < 64; i += 8) { g.beginPath(); g.moveTo(i, 0); g.lineTo(i, 64); g.stroke(); } }
+  radAdd(new THREE.Mesh(new THREE.PlaneGeometry(0.34, 0.36), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(gc) })), -0.2, 0.26, 0.165);
+  teaFx.dial = kMat(0x6b4a10, { emissive: 0xffb347, emissiveIntensity: 0 });
+  radAdd(new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.16), teaFx.dial), 0.2, 0.36, 0.165);
+  [0.12, 0.28].forEach(x => { radAdd(new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.05, 8), kMat(0xe8d9a8)), x, 0.15, 0.175).rotation.x = Math.PI/2; });
+  teaFx.note = emojiSprite('🎵', 0.6); teaFx.note.position.set(0, 1.0, 0.1); rad.add(teaFx.note);
+
+  // benches in the yard
+  [-2.7, 2.7].forEach(x => {
+    box(2.3, 0.1, 0.55, wood, x, 0.8, 3.4);
+    [-1, 1].forEach(s => box(0.1, 0.55, 0.45, dark, x + s*1.0, 0.52, 3.4));
+  });
+}
+buildChayakkada(-10, 10);
+
+// ---- Kaalavandi: bullock cart with arched thatch canopy, spoked wheels and two oxen (drive with E) ----
+const oxLegGeo = new THREE.CylinderGeometry(0.065, 0.05, 0.65, 6); oxLegGeo.translate(0, -0.325, 0);
+let cartCounter = 0;
+function addKaalavandi(x, z, rotY) {
+  const g = new THREE.Group(), legs = [], wheels = [];
+  const wood = kMat(0x8b5a2b), dark = kMat(0x5a3a1a), thatch = kMat(0xc2a060, { side: THREE.DoubleSide });
+  const add = (geo, m, px, py, pz) => { const o = new THREE.Mesh(geo, m); o.position.set(px, py, pz); g.add(o); return o; };
+  add(new THREE.BoxGeometry(2.4, 0.12, 1.3), wood, -0.3, 0.85, 0);
+  [-1, 1].forEach(s => add(new THREE.BoxGeometry(2.4, 0.25, 0.06), dark, -0.3, 1.0, s*0.65));
+  add(new THREE.CylinderGeometry(0.66, 0.66, 2.2, 12, 1, true, 0, Math.PI), thatch, -0.3, 0.92, 0).rotation.z = Math.PI/2;   // koodaram canopy
+  [-1, 1].forEach(s => {
+    const w = new THREE.Group(); w.position.set(-0.3, 0.57, s*0.74); g.add(w); wheels.push(w);
+    w.add(new THREE.Mesh(new THREE.TorusGeometry(0.52, 0.05, 6, 16), dark));
+    w.add(new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 8), dark));
+    for (let k = 0; k < 3; k++) { const sp = new THREE.Mesh(new THREE.BoxGeometry(1.04, 0.06, 0.06), wood); sp.rotation.z = k*Math.PI/3; w.add(sp); }
+  });
+  add(new THREE.BoxGeometry(2.6, 0.08, 0.08), dark, 2.2, 1.05, 0);     // pole
+  add(new THREE.BoxGeometry(0.12, 0.1, 1.25), dark, 3.45, 1.45, 0);    // yoke
+  [[-0.42, 0xf3ebdd], [0.42, 0x8a5a3a]].forEach(([oz, col]) => {
+    const m = kMat(col);
+    add(new THREE.BoxGeometry(1.3, 0.6, 0.5), m, 3.0, 1.0, oz);
+    add(new THREE.SphereGeometry(0.2, 8, 8), m, 2.6, 1.4, oz);
+    add(new THREE.BoxGeometry(0.45, 0.32, 0.3), m, 3.8, 1.1, oz);
+    [-1, 1].forEach(s => add(new THREE.ConeGeometry(0.04, 0.35, 5), kMat(0xeeeeee), 3.8, 1.42, oz + s*0.14).rotation.x = s*0.6);
+    add(new THREE.CylinderGeometry(0.02, 0.02, 0.5, 4), dark, 2.3, 0.95, oz).rotation.z = 0.3;
+    [2.55, 3.45].forEach(lx => [-0.17, 0.17].forEach(lz => legs.push(add(oxLegGeo, m, lx, 0.7, oz + lz))));
+  });
+  g.position.set(x, 0, z); g.rotation.y = rotY; g.userData.legs = legs; g.userData.wheels = wheels;
+  scene.add(g);
+  const id = 'cart_' + (cartCounter++);
+  cars[id] = { id, group: g, occupiedBy: null, isCart: true };
+}
+addKaalavandi(8, -1.2, 0);
+addKaalavandi(-13, 4.5, Math.PI);
+addKaalavandi(-21, -18, Math.PI/2);
+
+// ---- Trees: coconut palms, mango-type broad trees and banana clumps, drawn as a few instanced meshes ----
+for (let z = -80; z <= 80; z += 7) { addPalm(60.5 + Math.random()*1.5, z + Math.random()*2); addPalm(84 + Math.random()*1.5, z + Math.random()*2); }
+function buildPalms() {
+  const d = new THREE.Object3D(); d.rotation.order = 'YXZ';
+  const nP = palmSpots.length, nB = broadSpots.length, nBan = bananaSpots.length;
+  const fg = new THREE.ConeGeometry(0.3, 3, 4); fg.scale(1, 1, 0.22); fg.translate(0, 1.5, 0);
+  const trunks  = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.15, 0.26, 1, 6), kMat(0x8d6e4a), nP + nB + nBan);
+  const fronds  = new THREE.InstancedMesh(fg, kMat(0x2e8b3d, { side: THREE.DoubleSide }), nP*7 + nBan*5);
+  const nuts    = new THREE.InstancedMesh(new THREE.SphereGeometry(0.17, 6, 6), kMat(0x6f8f2f), nP*3);
+  const canopy  = new THREE.InstancedMesh(new THREE.SphereGeometry(1.5, 8, 6), kMat(0x3f8f3a), Math.max(1, nB*3));
+  let ti = 0, fi = 0, ni = 0, ci = 0;
+  const put = (mesh, i, px, py, pz, rx, ry, rz, sx, sy, sz) => { d.position.set(px, py, pz); d.rotation.set(rx, ry, rz); d.scale.set(sx, sy, sz); d.updateMatrix(); mesh.setMatrixAt(i, d.matrix); };
+  palmSpots.forEach(p => {
+    const lean = (Math.random() - 0.5) * 0.22, tx = p.x - Math.sin(lean)*p.h, ty = Math.cos(lean)*p.h;
+    put(trunks, ti++, (p.x + tx)/2, ty/2, p.z, 0, 0, lean, 1, p.h, 1);
+    for (let k = 0; k < 7; k++) put(fronds, fi++, tx, ty, p.z, 1.05 + Math.random()*0.35, k/7*Math.PI*2 + Math.random()*0.4, 0, 1, 1, 1);
+    for (let k = 0; k < 3; k++) { const a = k*2.1; put(nuts, ni++, tx + Math.cos(a)*0.25, ty - 0.15, p.z + Math.sin(a)*0.25, 0, 0, 0, 1, 1, 1); }
+  });
+  broadSpots.forEach(b => {
+    put(trunks, ti++, b.x, b.h/2, b.z, 0, 0, 0, 1.2, b.h, 1.2);
+    put(canopy, ci++, b.x, b.h + 1.0, b.z, 0, 0, 0, 1, 1, 1);
+    put(canopy, ci++, b.x + 0.9, b.h + 0.6, b.z + 0.4, 0, 0, 0, 0.8, 0.8, 0.8);
+    put(canopy, ci++, b.x - 0.8, b.h + 0.7, b.z - 0.5, 0, 0, 0, 0.85, 0.85, 0.85);
+  });
+  bananaSpots.forEach(b => {
+    put(trunks, ti++, b.x, 0.6, b.z, 0, 0, 0, 0.9, 1.2, 0.9);
+    for (let k = 0; k < 5; k++) put(fronds, fi++, b.x, 1.1, b.z, 0.9, k*1.26, 0, 1.7, 0.7, 1);
+  });
+  [trunks, fronds, nuts, canopy].forEach(m => { m.instanceMatrix.needsUpdate = true; m.frustumCulled = false; scene.add(m); });
+}
+buildPalms();
+
+/* ---- Shared old radio: server holds on/off + station; every player hears the same live stream,
+   louder the closer they are to the chayakkada. ---- */
+let radioState = { on: true, station: 0 };
+const radioAudio = new Audio(); radioAudio.preload = 'none';
+let radioLoaded = -1, radioTrying = false, radioRetryAt = 0, radioTapHint = false;
+radioAudio.addEventListener('error', () => { if (radioLoaded !== -1) { radioRetryAt = Date.now() + 12000; showToast('📻 Radio signal lost — retrying shortly'); } });
+document.addEventListener('click', () => { if (radioLoaded !== -1 && radioAudio.paused) radioAudio.play().catch(() => {}); });
+
+function radioDistance() {
+  const p = (drivingCarId && cars[drivingCarId]) ? cars[drivingCarId].group.position : myAvatar.position;
+  return Math.hypot(p.x - RADIO_POS.x, p.z - RADIO_POS.z);
+}
+function radioNear() { return document.getElementById('name-gate').style.display === 'none' && !drivingCarId && radioDistance() < RADIO_CTRL_RANGE; }
+function radioToggle() { if (radioNear()) socket.emit('radioSet', { on: !radioState.on, station: radioState.station }); }
+function radioNext()   { if (radioNear()) socket.emit('radioSet', { on: true, station: (radioState.station + 1) % STATIONS.length }); }
+document.getElementById('radio-toggle').onclick = radioToggle;
+document.getElementById('radio-next').onclick = radioNext;
+addEventListener('keydown', e => {
+  if (/INPUT|TEXTAREA/.test((e.target.tagName || ''))) return;
+  const k = e.key.toLowerCase();
+  if (k === 'r') radioToggle(); else if (k === 'n') radioNext();
+});
+
+function keralaTick(t) {
+  // samavar steam
+  teaFx.steam.forEach(s => {
+    const p = (t*0.25 + s.phase) % 1;
+    s.sp.position.set(Math.sin(p*6 + s.phase*5)*0.12, 1.7 + p*1.6, 0);
+    s.sp.scale.setScalar(0.35 + p*0.7); s.sp.material.opacity = (1 - p) * 0.55;
+  });
+  // bullock cart: oxen walk + wheels turn with actual movement
+  Object.values(cars).forEach(c => {
+    if (!c.isCart) return;
+    const p = c.group.position, sp = typeof c.lx === 'number' ? Math.hypot(p.x - c.lx, p.z - c.lz) : 0;
+    c.lx = p.x; c.lz = p.z; c.ph = (c.ph || 0) + sp*7;
+    const amp = Math.min(0.5, sp*10);
+    c.group.userData.legs.forEach((l, i) => { l.rotation.z = Math.sin(c.ph + (i % 2 ? Math.PI : 0)) * amp; });
+    c.group.userData.wheels.forEach(w => { w.rotation.z -= sp/0.55; });
+  });
+  // radio
+  teaFx.dial.emissiveIntensity = radioState.on ? 0.7 + 0.25*Math.sin(t*5) : 0;
+  teaFx.note.visible = radioState.on; teaFx.note.position.y = 1.0 + Math.sin(t*2.5)*0.08;
+  const gate = document.getElementById('name-gate').style.display !== 'none';
+  const d = radioDistance();
+  const vol = (!gate && radioState.on) ? Math.max(0, Math.min(1, 1 - (d - 3) / (RADIO_HEAR_RANGE - 3))) : 0;
+  const idx = radioState.station % STATIONS.length;
+  if (vol > 0.03) {
+    if (radioLoaded !== idx) { radioAudio.src = STATIONS[idx].url; radioLoaded = idx; }
+    radioAudio.volume = Math.min(1, vol * 0.9);
+    if (radioAudio.paused && !radioTrying && Date.now() > radioRetryAt) {
+      radioTrying = true;
+      radioAudio.play().catch(() => { radioRetryAt = Date.now() + 4000; if (!radioTapHint) { radioTapHint = true; showToast('📻 Tap anywhere to start the radio'); } })
+        .then(() => setTimeout(() => { radioTrying = false; }, 800));
+    }
+  } else if (radioLoaded !== -1) {           // out of earshot or switched off: drop the connection (rejoins live next time)
+    radioAudio.pause(); radioAudio.removeAttribute('src'); radioAudio.load(); radioLoaded = -1;
+  }
+  const chip = document.getElementById('radio-chip');
+  chip.style.display = vol > 0.05 ? 'block' : 'none';
+  if (vol > 0.05) chip.textContent = '📻 ' + STATIONS[idx].name + ' • live';
+  const ui = document.getElementById('radio-ui');
+  const near = !gate && !drivingCarId && d < RADIO_CTRL_RANGE;
+  ui.style.display = near ? 'flex' : 'none';
+  if (near) {
+    document.getElementById('radio-toggle').textContent = radioState.on ? '📻 Turn off (R)' : '📻 Turn on (R)';
+    document.getElementById('radio-next').style.display = STATIONS.length > 1 ? '' : 'none';
+  }
+}
 
 // Floating balloon pickups — matches the site's real currency, not generic cash
 function makeBalloonSprite() {
@@ -1058,6 +1346,10 @@ let myHairStyle = 'short';
   keeper.position.set(10, 0.25, 12.7);
   keeper.add(makeLabel('Shopkeeper'));
   scene.add(keeper);
+  const chaya = makeAvatarMesh('male', '#ffffff', 'short');          // the chayakkaran, behind the counter
+  chaya.position.set(-10, 0.27, 10.8); chaya.rotation.y = Math.PI;
+  chaya.add(makeLabel('Chayakkaran'));
+  scene.add(chaya);
 }
 let myAvatar = makeAvatarMesh(myGender, myOutfitColor, myHairStyle);
 scene.add(myAvatar);
@@ -1152,7 +1444,7 @@ function findNearbyCar() {
   for (const id in cars) {
     const c = cars[id];
     const d = Math.hypot(c.group.position.x - myAvatar.position.x, c.group.position.z - myAvatar.position.z);
-    const reach = c.isPlane ? 4 : 2.2; // planes are bigger
+    const reach = c.isPlane ? 4 : c.isCart ? 3.4 : 2.2; // planes and carts are bigger
     if (d < reach && d < nearestDist) { nearest = c; nearestDist = d; }
   }
   return nearest;
@@ -1197,7 +1489,7 @@ function exitVehicle() {
   if (!drivingCarId) return;
   const c = cars[drivingCarId];
   if (c.isPlane && c.group.position.y > 0.6) { showToast('Land the plane first ✈️'); return; }
-  const off = c.isPlane ? 3.6 : 1.6;
+  const off = c.isPlane ? 3.6 : c.isCart ? 2.2 : 1.6;
   c.group.rotation.z = 0;
   document.getElementById('fly-btns').style.display = 'none';
   setChip(null);
@@ -1229,7 +1521,8 @@ function updateDriving() {
   if (keys['d']) steer -= 1;
   throttle += -joyVec.y; steer += -joyVec.x;
 
-  const accel = 0.012, maxSpeed = 0.32, friction = 0.985, turnRate = 0.045;
+  const cart = !!c.isCart;   // kaalavandi: slow and steady
+  const accel = cart ? 0.006 : 0.012, maxSpeed = cart ? 0.13 : 0.32, friction = 0.985, turnRate = cart ? 0.03 : 0.045;
   carSpeed += throttle * accel;
   carSpeed *= friction;
   carSpeed = Math.max(-maxSpeed*0.6, Math.min(maxSpeed, carSpeed));
@@ -1349,21 +1642,26 @@ function updateMovement() {
   // Show/hide the "Press E to enter" prompt based on proximity to a free car
   const nearby = findNearbyCar();
   if (nearby && !nearby.occupiedBy) {
-    vehiclePrompt.textContent = nearby.isPlane ? 'Press E to fly ✈️' : 'Press E to enter';
+    vehiclePrompt.textContent = nearby.isPlane ? 'Press E to fly ✈️' : nearby.isCart ? 'Press E to ride the kaalavandi 🐂' : 'Press E to enter';
     vehiclePrompt.style.display = 'block';
   } else vehiclePrompt.style.display = 'none';
 
-  const atShop = nearShop();
-  shopPrompt.style.display = atShop ? 'block' : 'none';
-  if (!atShop && document.getElementById('shop-overlay').style.display !== 'none') {
+  const atShop = nearShop(), atTea = nearTea();
+  shopPrompt.textContent = atTea ? '🍵 Press B for chaya & palaharam' : '🛒 Press B or tap to shop';
+  shopPrompt.style.display = (atShop || atTea) ? 'block' : 'none';
+  if (document.getElementById('shop-overlay').style.display !== 'none' && ((shopMode === 'tea' && !atTea) || (shopMode === 'main' && !atShop))) {
     document.getElementById('shop-overlay').style.display = 'none'; // walked away from the counter
   }
 }
 
 const shopPrompt = document.getElementById('shop-prompt');
+let shopMode = 'main';
+function nearTea() { return !drivingCarId && Math.hypot(myAvatar.position.x - TEA_POS.x, myAvatar.position.z - TEA_POS.z) < TEA_RANGE; }
 function openShop() {
   if (document.getElementById('name-gate').style.display !== 'none') return;
-  if (!nearShop()) { showToast('🛒 Walk up to the Shop counter in the city centre to buy things'); return; }
+  if (nearTea()) shopMode = 'tea';
+  else if (nearShop()) shopMode = 'main';
+  else { showToast('🛒 Walk up to the Shop counter or the chayakkada to buy things'); return; }
   renderShop();
   document.getElementById('shop-overlay').style.display = 'flex';
 }
@@ -1494,6 +1792,12 @@ socket.on('carFreed', ({ carId }) => {
 });
 socket.on('carDenied', () => { /* someone else got there first — no action needed */ });
 
+// --- Shared chayakkada radio ---
+socket.on('radioState', (s) => {
+  radioState = { on: !!s.on, station: s.station | 0 };
+  if (s.by) showToast(s.on ? `📻 ${s.by} tuned the radio` : `📻 ${s.by} switched the radio off`);
+});
+
 // --- Delivery job updates ---
 const jobBanner = document.getElementById('job-banner');
 socket.on('deliveryUpdated', (job) => {
@@ -1534,7 +1838,7 @@ let shopCatalog = [];
 let myInventory = {};
 const CATEGORY_LABELS = {
   weapon: '🔫 Guns & Weapons', flower: '🌹 Flowers', food: '🍔 Food', drink: '🥤 Drinks',
-  party: '🎉 Party', accessory: '🕶️ Accessories', clothing: '🧥 Clothing'
+  chayakkada: '🍵 Chaya & Palaharam', party: '🎉 Party', accessory: '🕶️ Accessories', clothing: '🧥 Clothing'
 };
 function itemLabel(itemId) {
   const item = shopCatalog.find(i => i.id === itemId);
@@ -1573,7 +1877,8 @@ function renderShop() {
   document.getElementById('shop-balance').textContent = `🎈 ${balance} balloons to spend`;
   grid.innerHTML = '';
   const byCategory = {};
-  shopCatalog.forEach(item => { (byCategory[item.category] = byCategory[item.category] || []).push(item); });
+  document.querySelector('#shop-header span').textContent = shopMode === 'tea' ? '🍵 ചായക്കട — Chayakkada' : '🛒 Shop';
+  shopCatalog.forEach(item => { if ((item.shop || 'main') !== shopMode) return; (byCategory[item.category] = byCategory[item.category] || []).push(item); });
   Object.entries(byCategory).forEach(([cat, items]) => {
     const label = document.createElement('div');
     label.className = 'shop-cat-label';
@@ -1777,6 +2082,9 @@ function drawMap() {
     mapCtx.closePath(); mapCtx.fill();
   }
 
+  mapCtx.font = '15px serif'; mapCtx.textAlign = 'center'; mapCtx.textBaseline = 'middle';
+  { const t = worldToMap(TEA_POS.x, TEA_POS.z); mapCtx.fillText('🍵', t.px, t.py);
+    const s = worldToMap(SHOP_POS.x, SHOP_POS.z); mapCtx.fillText('🛒', s.px, s.py); }
   const me = worldToMap(myAvatar.position.x, myAvatar.position.z);
   mapCtx.fillStyle = '#FE019A';
   mapCtx.beginPath(); mapCtx.arc(me.px, me.py, 6, 0, Math.PI*2); mapCtx.fill();
@@ -1820,6 +2128,7 @@ function animate() {
   waterTex.offset.y = t * 0.05;
   Object.values(cars).forEach(c => { if (c.prop && c.occupiedBy && c.occupiedBy !== socket.id) c.prop.rotation.x += 0.6; });
   updateMovement();
+  keralaTick(t);
   updateWaypointReadout();
   if (waypointBeacon.visible) waypointBeacon.position.y = 1.2 + Math.sin(t*3)*0.15;
   if (mapOpen) drawMap();
