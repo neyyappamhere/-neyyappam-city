@@ -86,12 +86,26 @@ const ITEMS = [
   { id: 'necklace',    name: 'Gold Necklace',   category: 'accessory', price: 25, emoji: '📿' },
   { id: 'cap',         name: 'Snapback Cap',    category: 'clothing',  price: 16, emoji: '🧢' },
   { id: 'jacket',      name: 'Bomber Jacket',   category: 'clothing',  price: 30, emoji: '🧥' },
+  // --- Chayakkada menu (bought at the tea shop counter, not the main Shop) ---
+  { id: 'chaya',        name: 'Chaya',            category: 'chayakkada', price: 4, emoji: '🍵', shop: 'tea' },
+  { id: 'sulaimani',    name: 'Sulaimani',        category: 'chayakkada', price: 5, emoji: '🍋', shop: 'tea' },
+  { id: 'parippuvada',  name: 'Parippu Vada',     category: 'chayakkada', price: 5, emoji: '🧆', shop: 'tea' },
+  { id: 'pazhampori',   name: 'Pazhampori',       category: 'chayakkada', price: 6, emoji: '🍌', shop: 'tea' },
+  { id: 'unniyappam',   name: 'Unniyappam',       category: 'chayakkada', price: 7, emoji: '🥮', shop: 'tea' },
+  { id: 'halwa',        name: 'Kozhikodan Halwa', category: 'chayakkada', price: 9, emoji: '🍬', shop: 'tea' },
 ];
 // The Shop building stands on the central plaza. Purchases are only accepted
 // when the buyer is actually standing at the counter (client uses 7, the
 // server allows a little slack for network lag).
 const SHOP_POS = { x: 10, z: 15.5 };
 const SHOP_RANGE = 8;
+// Chayakkada (tea shop) counter + the old radio sitting on it. Must match the client constants.
+const TEA_POS = { x: -10, z: 8 };
+const RADIO_POS = { x: -12.8, z: 9.7 };
+const RADIO_RANGE = 8;
+// Shared radio: one on/off + station index for the whole town. The client owns the station list
+// (STATIONS in city_world.php) and plays the live stream locally, so everyone hears the same broadcast.
+let radio = { on: true, station: 0 };
 const ITEMS_BY_ID = Object.fromEntries(ITEMS.map(i => [i.id, i]));
 const FLOWER_IDS = ITEMS.filter(i => i.category === 'flower').map(i => i.id);
 
@@ -189,6 +203,7 @@ io.on('connection', (socket) => {
     socket.emit('currentCars', occupiedCars); // let the newcomer know which cars are already taken
     socket.emit('deliveryUpdated', deliveryJob);
     socket.emit('shopCatalog', ITEMS);
+    socket.emit('radioState', radio);
     socket.emit('treasureSpots', treasureSpots.filter(t => !claimedTreasures.has(t.id)));
     socket.broadcast.emit('playerJoined', players[socket.id]);
   });
@@ -245,7 +260,8 @@ io.on('connection', (socket) => {
     const p = players[socket.id];
     const item = ITEMS.find(i => i.id === itemId);
     if (!p || !item) return;
-    if (Math.hypot(p.x - SHOP_POS.x, p.z - SHOP_POS.z) > SHOP_RANGE) { socket.emit('purchaseDenied', { itemId, reason: 'far' }); return; }
+    const counter = item.shop === 'tea' ? TEA_POS : SHOP_POS;
+    if (Math.hypot(p.x - counter.x, p.z - counter.z) > SHOP_RANGE) { socket.emit('purchaseDenied', { itemId, reason: 'far' }); return; }
     if (p.balloons < item.price) { socket.emit('purchaseDenied', { itemId, reason: 'insufficient' }); return; }
     p.balloons -= item.price;
     p.inventory[itemId] = (p.inventory[itemId] || 0) + 1;
@@ -340,6 +356,19 @@ io.on('connection', (socket) => {
     if (p.uid) creditRealAccount(p.uid, 30);
     generateDeliveryJob();
     io.emit('deliveryUpdated', deliveryJob);
+  });
+
+  // --- Chayakkada radio: anyone standing at the counter can switch it on/off or change station ---
+  socket.on('radioSet', ({ on, station } = {}) => {
+    const p = players[socket.id];
+    if (!p) return;
+    if (Math.hypot(p.x - RADIO_POS.x, p.z - RADIO_POS.z) > RADIO_RANGE) return;
+    const now = Date.now();
+    if (p.lastRadio && now - p.lastRadio < 600) return; // light throttle
+    p.lastRadio = now;
+    const st = Number.isInteger(station) && station >= 0 && station < 32 ? station : radio.station;
+    radio = { on: !!on, station: st };
+    io.emit('radioState', { ...radio, by: p.name });
   });
 
   socket.on('chatMessage', (text) => {
