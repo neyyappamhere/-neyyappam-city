@@ -317,6 +317,10 @@
 <button id="voice-btn"><i class="fa-solid fa-microphone"></i> Voice</button>
 <button id="map-btn"><i class="fa-solid fa-map"></i> Map</button>
 <button id="stats-btn"><i class="fa-solid fa-user"></i> Stats</button>
+<button id="shop-btn"><i class="fa-solid fa-store"></i> Shop</button>
+<button id="inventory-btn"><i class="fa-solid fa-bag-shopping"></i> Bag</button>
+
+<div id="toast-stack"></div>
 
 <div id="job-banner"></div>
 <div id="waypoint-readout" style="display:none;"></div>
@@ -343,6 +347,27 @@
     <div class="stat-row"><span>Distance traveled</span><span id="stat-distance">0 m</span></div>
     <div class="stat-row"><span>Deliveries completed</span><span id="stat-deliveries">0</span></div>
     <div class="stat-row"><span>Cars driven</span><span id="stat-cars">0</span></div>
+  </div>
+</div>
+
+<div id="shop-overlay" style="display:none;">
+  <div id="shop-panel">
+    <div id="shop-header">
+      <span>🛒 Shop</span>
+      <button id="shop-close"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="shop-balance" id="shop-balance">🎈 0 balloons to spend</div>
+    <div id="shop-grid"></div>
+  </div>
+</div>
+
+<div id="inventory-overlay" style="display:none;">
+  <div id="inventory-panel">
+    <div id="inventory-header">
+      <span>🎒 Inventory</span>
+      <button id="inventory-close"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div id="inventory-list"></div>
   </div>
 </div>
 
