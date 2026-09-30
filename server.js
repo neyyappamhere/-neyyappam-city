@@ -31,6 +31,28 @@ app.use(express.static('public', {
   }
 }));
 
+// --- Voice chat: issues a LiveKit access token. The client (city_world.php) calls
+// /livekit-token and expects JSON { token, url }. Set these env vars on the server:
+//   wss://neyyappam-city-36cwtto5.livekit.cloud         e.g. wss://your-project.livekit.cloud
+//   APIgb7j67qobq6H     from your LiveKit project settings
+//   ••••••••••••••••••••••••••••••••  from your LiveKit project settings
+const { AccessToken } = require('livekit-server-sdk');
+app.get('/livekit-token', async (req, res) => {
+  const { LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET } = process.env;
+  if (!LIVEKIT_URL || !LIVEKIT_API_KEY || !LIVEKIT_API_SECRET) {
+    return res.status(503).json({ error: 'Voice chat is not configured on the server yet (missing LIVEKIT_* settings).' });
+  }
+  try {
+    const identity = String(req.query.identity || '').slice(0, 64) || 'guest-' + Math.random().toString(36).slice(2, 10);
+    const at = new AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET, { identity, ttl: '2h' });
+    at.addGrant({ roomJoin: true, room: 'neyyappam-city', canPublish: true, canSubscribe: true });
+    res.json({ token: await at.toJwt(), url: LIVEKIT_URL });
+  } catch (err) {
+    console.error('livekit-token failed:', err.message);
+    res.status(500).json({ error: 'Could not create a voice token.' });
+  }
+});
+
 app.get(['/', '/city_world.php'], (req, res) => {
   res.type('html');
   res.sendFile(__dirname + '/public/city_world.php');
