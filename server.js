@@ -1,15 +1,14 @@
-// server.js — real-time positions, chat, voice tokens, balloons, cars,
-// deliveries, treasure hunt and shop for Neyyappam City.
+// server.js — real-time positions, chat, voice signaling, and balloon pickups.
 //
 // Balloon crediting: if a player joined with a real `uid` (passed from your
-// PHP embed page for logged-in users), balloon changes are POSTed to your PHP
-// endpoint (award_balloons.php). Guests (no uid) get a session-only counter.
-// NOTE: award_balloons.php must accept NEGATIVE amounts (shop purchases debit).
+// PHP embed page for logged-in users), collected balloons are POSTed to your
+// PHP endpoint (award_balloons.php) so they land in the real `users.balloons`
+// column and `balloon_transactions` ledger. Guests (no uid) just get a
+// session-only counter that resets when they leave — never touches the DB.
 
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
-const { AccessToken } = require('livekit-server-sdk');
 
 const app = express();
 const server = http.createServer(app);
@@ -21,12 +20,11 @@ const io = new Server(server, {
   }
 });
 
-// --- LiveKit voice config (set as env vars on your host) ---
-const LIVEKIT_URL = process.env.LIVEKIT_URL || '';
-const LIVEKIT_API_KEY = process.env.LIVEKIT_API_KEY || '';
-const LIVEKIT_API_SECRET = process.env.LIVEKIT_API_SECRET || '';
-const VOICE_ROOM = 'neyyappam-city';
-
+// The game's HTML file is named city_world.php (matching your site's PHP
+// naming convention) even though it's plain static HTML/JS with no PHP
+// interpreter involved — Node just serves it as a file. Because ".php" isn't
+// normally mapped to text/html, we force the correct header explicitly here,
+// otherwise some browsers would try to download it instead of rendering it.
 app.use(express.static('public', {
   setHeaders: (res, filePath) => {
     if (filePath.endsWith('.php')) res.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -38,75 +36,72 @@ app.get(['/', '/city_world.php'], (req, res) => {
   res.sendFile(__dirname + '/public/city_world.php');
 });
 
-app.get('/livekit-token', async (req, res) => {
-  const identity = String(req.query.identity || '').slice(0, 64);
-  if (!identity) return res.status(400).json({ error: 'identity required' });
-  if (!LIVEKIT_API_KEY || !LIVEKIT_API_SECRET || !LIVEKIT_URL) {
-    return res.status(500).json({ error: 'Voice chat is not configured on the server yet.' });
-  }
-  try {
-    const at = new AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET, { identity });
-    at.addGrant({ roomJoin: true, room: VOICE_ROOM, canPublish: true, canSubscribe: true });
-    const token = await at.toJwt();
-    res.json({ token, url: LIVEKIT_URL });
-  } catch (err) {
-    console.error('Failed to create LiveKit token:', err.message);
-    res.status(500).json({ error: 'Failed to create voice token' });
-  }
-});
-
 // --- Config for talking back to your PHP site ---
 const AWARD_ENDPOINT = process.env.AWARD_ENDPOINT || 'https://neyyappam.com/ajax/award_balloons.php';
 const SHARED_SECRET = process.env.CITY_SHARED_SECRET || 'change-this-to-a-long-random-string';
 
-// --- World layout: identical to how the client builds its city grid ---
-const BLOCK = 20, GRID = 6;
-const blockCenters = [];
-for (let gx = -GRID / 2; gx < GRID / 2; gx++) {
-  for (let gz = -GRID / 2; gz < GRID / 2; gz++) {
-    if (gx === 0 && gz === 0) continue; // center plaza is skipped by the client
-    blockCenters.push({ x: gx * BLOCK + BLOCK / 2, z: gz * BLOCK + BLOCK / 2 });
+const players = {}; // socket.id -> { id, name, gender, outfitColor, hairStyle, x, y, z, rotY, uid, balloons, drivingCarId, inventory, flowersGiven, flowersReceived, treasuresFound }
+const claimedPickups = new Set();
+const occupiedCars = {}; // carId -> socket.id of whoever is currently driving it
+
+// --- Balloon economy: type/value is derived from the id itself so every
+// client (which generates ids in the same deterministic order while
+// building the city) and the server always agree on what a given balloon
+// is worth, with no extra network round-trip needed. ---
+function balloonValueForId(id) {
+  if (id.startsWith('rainbow_')) return 50;
+  if (id.startsWith('bonus_')) {
+    const n = parseInt(id.split('_')[1], 10) || 0;
+    return (n % 2 === 0) ? 15 : 10; // gold vs purple bonus balloons
   }
-}
-// The client creates exactly one balloon ('balloon_N') and one parked car
-// ('car_N') per block, so N ranges over 0..blockCenters.length-1.
-const SPOT_COUNT = blockCenters.length;
-function isValidSpotId(prefix, id) {
-  if (typeof id !== 'string' || !id.startsWith(prefix)) return false;
-  const tail = id.slice(prefix.length);
-  if (!/^\d+$/.test(tail)) return false;
-  return parseInt(tail, 10) < SPOT_COUNT;
+  return 5; // classic pink balloon
 }
 
-const players = {};              // socket.id -> player state
-const claimedPickups = new Set(); // balloon ids already collected
-const occupiedCars = {};         // carId -> socket.id of current driver
-const carPositions = {};         // carId -> last known {x,y,z,rotY} (so newcomers see moved cars)
-
-// --- Balloon values: the client only spawns classic balloons ('balloon_N') ---
-const BALLOON_VALUE = 5;
-
-// --- Shop catalog. Categories match the client's CATEGORY_LABELS ---
+// --- Shop catalog: cosmetic / social items purchased with balloons.
+// Entirely virtual props with no real-world function — same idea as
+// props in any social sim game. ---
 const ITEMS = [
-  { id: 'rose',          name: 'Rose',            category: 'flower',    price: 10, emoji: '🌹' },
-  { id: 'lily',          name: 'Lily',            category: 'flower',    price: 15, emoji: '🌷' },
-  { id: 'burger',        name: 'Burger',          category: 'food',      price: 12, emoji: '🍔' },
-  { id: 'pizza',         name: 'Pizza Slice',     category: 'food',      price: 10, emoji: '🍕' },
-  { id: 'soda',          name: 'Soda',            category: 'drink',     price: 8,  emoji: '🥤' },
-  { id: 'coffee',        name: 'Coffee',          category: 'drink',     price: 10, emoji: '☕' },
-  { id: 'mocktail',      name: 'Party Mocktail',  category: 'drink',     price: 14, emoji: '🍹' },
-  { id: 'party_hat',     name: 'Party Hat',       category: 'party',     price: 12, emoji: '🎉' },
-  { id: 'confetti',      name: 'Confetti Popper', category: 'party',     price: 10, emoji: '🎊' },
-  { id: 'balloon_bunch', name: 'Balloon Bunch',   category: 'party',     price: 20, emoji: '🎈' },
-  { id: 'sunglasses',    name: 'Sunglasses',      category: 'accessory', price: 18, emoji: '🕶️' },
-  { id: 'necklace',      name: 'Gold Necklace',   category: 'accessory', price: 25, emoji: '📿' },
-  { id: 'cap',           name: 'Snapback Cap',    category: 'clothing',  price: 16, emoji: '🧢' },
-  { id: 'jacket',        name: 'Bomber Jacket',   category: 'clothing',  price: 30, emoji: '🧥' },
+  { id: 'rose',        name: 'Rose',            category: 'flower',    price: 10, emoji: '🌹' },
+  { id: 'lily',        name: 'Lily',            category: 'flower',    price: 15, emoji: '🌷' },
+  { id: 'sunflower',   name: 'Sunflower',       category: 'flower',    price: 12, emoji: '🌻' },
+  { id: 'bouquet',     name: 'Bouquet',         category: 'flower',    price: 28, emoji: '💐' },
+  { id: 'burger',      name: 'Burger',          category: 'food',      price: 8,  emoji: '🍔' },
+  { id: 'pizza_slice', name: 'Pizza Slice',     category: 'food',      price: 9,  emoji: '🍕' },
+  { id: 'donut',       name: 'Donut',           category: 'food',      price: 6,  emoji: '🍩' },
+  { id: 'icecream',    name: 'Ice Cream',       category: 'food',      price: 7,  emoji: '🍦' },
+  { id: 'soda',        name: 'Soda',            category: 'drink',     price: 8,  emoji: '🥤' },
+  { id: 'coffee',      name: 'Coffee',          category: 'drink',     price: 10, emoji: '☕' },
+  { id: 'mocktail',    name: 'Party Mocktail',  category: 'drink',     price: 14, emoji: '🍹' },
+  { id: 'cigar_pack',  name: 'Cigarette Pack',  category: 'drink',     price: 12, emoji: '🚬' },
+  { id: 'water_gun',   name: 'Water Gun',       category: 'weapon',    price: 22, emoji: '🔫' },
+  { id: 'toy_blaster', name: 'Toy Blaster',     category: 'weapon',    price: 30, emoji: '🔫' },
+  { id: 'nerf_bow',    name: 'Foam Dart Bow',   category: 'weapon',    price: 26, emoji: '🏹' },
+  { id: 'party_hat',   name: 'Party Hat',       category: 'party',     price: 12, emoji: '🎉' },
+  { id: 'confetti',    name: 'Confetti Popper', category: 'party',     price: 10, emoji: '🎊' },
+  { id: 'balloon_bunch',name:'Balloon Bunch',   category: 'party',     price: 20, emoji: '🎈' },
+  { id: 'sunglasses',  name: 'Sunglasses',      category: 'accessory', price: 18, emoji: '🕶️' },
+  { id: 'necklace',    name: 'Gold Necklace',   category: 'accessory', price: 25, emoji: '📿' },
+  { id: 'cap',         name: 'Snapback Cap',    category: 'clothing',  price: 16, emoji: '🧢' },
+  { id: 'jacket',      name: 'Bomber Jacket',   category: 'clothing',  price: 30, emoji: '🧥' },
 ];
 const ITEMS_BY_ID = Object.fromEntries(ITEMS.map(i => [i.id, i]));
 const FLOWER_IDS = ITEMS.filter(i => i.category === 'flower').map(i => i.id);
 
-// --- Delivery job: one shared job at a time ---
+
+
+// --- Block-center coordinates, computed the exact same way the client builds
+// its city grid, so job markers land on real sidewalks on both sides. ---
+const BLOCK = 20, GRID = 6;
+const blockCenters = [];
+for (let gx = -GRID/2; gx < GRID/2; gx++) {
+  for (let gz = -GRID/2; gz < GRID/2; gz++) {
+    if (gx === 0 && gz === 0) continue; // center plaza, skip like the client does
+    blockCenters.push({ x: gx*BLOCK + BLOCK/2, z: gz*BLOCK + BLOCK/2 });
+  }
+}
+
+// --- Delivery job: one shared job at a time. First player to reach the
+// pickup marker claims it; only they can complete it at the dropoff. ---
 let deliveryJob = null;
 function generateDeliveryJob() {
   const a = blockCenters[Math.floor(Math.random() * blockCenters.length)];
@@ -117,7 +112,10 @@ function generateDeliveryJob() {
 }
 generateDeliveryJob();
 
-// --- Treasure hunt ---
+// --- Treasure hunt: chests scattered around the city (deterministic
+// positions derived the same way as delivery pickup spots, so every
+// client places them identically). Rewards are randomized server-side
+// at claim time since only the claimant needs to see the exact result. ---
 const treasureSpots = [];
 blockCenters.forEach((b, i) => {
   if (i % 3 === 0) treasureSpots.push({ id: 'chest_' + i, x: b.x + 2.6, z: b.z - 2.6 });
@@ -140,7 +138,7 @@ function pickWeighted(list) {
   return list[list.length - 1];
 }
 
-// Chests respawn periodically
+// Chests respawn periodically so the hunt stays alive as people find them.
 setInterval(() => {
   claimedTreasures = new Set();
   io.emit('treasureSpots', treasureSpots);
@@ -159,66 +157,47 @@ async function creditRealAccount(uid, amount) {
   }
 }
 
-const num = (v) => (Number.isFinite(v) ? v : 0);
-const near = (p, target, range) => Math.hypot(p.x - target.x, p.z - target.z) <= range;
-
 io.on('connection', (socket) => {
   console.log('connected:', socket.id);
-  let lastChat = 0;
 
   socket.on('join', (data) => {
-    data = data || {};
-    const start = Number.isFinite(data.startingBalloons) ? Math.max(0, Math.floor(data.startingBalloons)) : 0;
     players[socket.id] = {
       id: socket.id,
-      name: String(data.name || 'Guest').slice(0, 24),
+      name: (data.name || 'Guest').slice(0, 24),
       gender: ['male', 'female', 'other'].includes(data.gender) ? data.gender : 'other',
       outfitColor: /^#?[0-9a-fA-F]{6}$/.test(data.outfitColor || '') ? data.outfitColor : null,
       hairStyle: ['short', 'pony', 'bandana'].includes(data.hairStyle) ? data.hairStyle : 'short',
       x: 0, y: 0, z: 0, rotY: 0,
-      uid: data.uid || null,
-      balloons: start,
+      uid: data.uid || null, // real logged-in user id, or null for a guest
+      balloons: Number.isFinite(data.startingBalloons) ? data.startingBalloons : 0,
       drivingCarId: null,
-      inventory: {},
+      inventory: {},        // itemId -> count
       flowersGiven: 0,
       flowersReceived: 0,
       treasuresFound: 0,
       collectibles: []
     };
-
     socket.emit('currentPlayers', players);
-    socket.emit('currentCars', occupiedCars);
-
-    // Bring the newcomer up to date on the world state
-    for (const carId in carPositions) {
-      const pos = carPositions[carId];
-      if (occupiedCars[carId]) socket.emit('carMoved', { carId, ...pos });
-      else socket.emit('carExited', { carId, driverId: null, ...pos }); // parked where last left
-    }
-    claimedPickups.forEach(pickupId => {
-      socket.emit('balloonCollected', { pickupId, by: null, balloons: 0 }); // hides already-taken balloons
-    });
-
+    socket.emit('currentCars', occupiedCars); // let the newcomer know which cars are already taken
     socket.emit('deliveryUpdated', deliveryJob);
     socket.emit('shopCatalog', ITEMS);
-    socket.emit('inventoryUpdated', players[socket.id].inventory);
     socket.emit('treasureSpots', treasureSpots.filter(t => !claimedTreasures.has(t.id)));
     socket.broadcast.emit('playerJoined', players[socket.id]);
   });
 
   socket.on('move', (pos) => {
     const p = players[socket.id];
-    if (!p || !pos) return;
-    p.x = num(pos.x); p.y = num(pos.y); p.z = num(pos.z); p.rotY = num(pos.rotY);
+    if (!p) return;
+    p.x = pos.x; p.y = pos.y; p.z = pos.z; p.rotY = pos.rotY;
     socket.broadcast.emit('playerMoved', p);
   });
 
   // --- Vehicles ---
   socket.on('enterCar', (carId) => {
     const p = players[socket.id];
-    if (!p || p.drivingCarId || !isValidSpotId('car_', carId)) return;
+    if (!p || p.drivingCarId) return; // already driving something
     if (occupiedCars[carId]) {
-      socket.emit('carDenied', { carId });
+      socket.emit('carDenied', { carId }); // someone else already got there first
       return;
     }
     occupiedCars[carId] = socket.id;
@@ -228,51 +207,48 @@ io.on('connection', (socket) => {
 
   socket.on('driveCar', (data) => {
     const p = players[socket.id];
-    if (!p || !data || p.drivingCarId !== data.carId) return;
-    const pos = { x: num(data.x), y: num(data.y), z: num(data.z), rotY: num(data.rotY) };
-    carPositions[data.carId] = pos;
-    p.x = pos.x; p.z = pos.z; // keep server-side position current while driving
-    socket.broadcast.emit('carMoved', { carId: data.carId, ...pos });
+    if (!p || p.drivingCarId !== data.carId) return; // ignore spoofed updates
+    socket.broadcast.emit('carMoved', { carId: data.carId, x: data.x, y: data.y, z: data.z, rotY: data.rotY });
   });
 
   socket.on('exitCar', (data) => {
     const p = players[socket.id];
-    if (!p || !data || p.drivingCarId !== data.carId) return;
-    const pos = { x: num(data.x), y: num(data.y), z: num(data.z), rotY: num(data.rotY) };
-    carPositions[data.carId] = pos;
+    if (!p || p.drivingCarId !== data.carId) return;
     delete occupiedCars[data.carId];
     p.drivingCarId = null;
-    io.emit('carExited', { carId: data.carId, driverId: socket.id, ...pos });
+    io.emit('carExited', { carId: data.carId, driverId: socket.id, x: data.x, y: data.y, z: data.z, rotY: data.rotY });
   });
 
-  // --- Balloons (ids validated so clients can't farm made-up ids) ---
   socket.on('collectBalloon', (pickupId) => {
     const p = players[socket.id];
-    if (!p || !isValidSpotId('balloon_', pickupId)) return;
-    if (claimedPickups.has(pickupId)) return;
+    if (!p) return;
+    if (claimedPickups.has(pickupId)) return; // already taken
     claimedPickups.add(pickupId);
-    p.balloons += BALLOON_VALUE;
-    io.emit('balloonCollected', { pickupId, by: socket.id, balloons: p.balloons, value: BALLOON_VALUE });
-    if (p.uid) creditRealAccount(p.uid, BALLOON_VALUE);
+    const value = balloonValueForId(pickupId);
+    p.balloons += value;
+    io.emit('balloonCollected', { pickupId, by: socket.id, balloons: p.balloons, value });
+
+    // Only real accounts get this written back to MySQL
+    if (p.uid) creditRealAccount(p.uid, value);
   });
 
-  // --- Shop ---
+  // --- Shop: buy a cosmetic/social item with balloons ---
   socket.on('buyItem', (itemId) => {
     const p = players[socket.id];
-    const item = ITEMS_BY_ID[itemId];
+    const item = ITEMS.find(i => i.id === itemId);
     if (!p || !item) return;
     if (p.balloons < item.price) { socket.emit('purchaseDenied', { itemId, reason: 'insufficient' }); return; }
     p.balloons -= item.price;
     p.inventory[itemId] = (p.inventory[itemId] || 0) + 1;
     socket.emit('purchaseOk', { itemId, balloons: p.balloons, inventory: p.inventory });
-    if (p.uid) creditRealAccount(p.uid, -item.price);
+    if (p.uid) creditRealAccount(p.uid, -item.price); // debit the real account's ledger too
   });
 
-  // --- Gift an item to a nearby player ---
-  socket.on('giftItem', ({ targetId, itemId } = {}) => {
+  // --- Gift a carried item to a nearby player ---
+  socket.on('giftItem', ({ targetId, itemId }) => {
     const p = players[socket.id], t = players[targetId];
-    if (!p || !t || targetId === socket.id || !p.inventory[itemId]) return;
-    if (!near(p, t, 3.5)) { socket.emit('giftDenied', { reason: 'range' }); return; }
+    if (!p || !t || !p.inventory[itemId]) return;
+    if (Math.hypot(p.x - t.x, p.z - t.z) > 3.5) { socket.emit('giftDenied', { reason: 'range' }); return; }
     p.inventory[itemId] -= 1;
     if (p.inventory[itemId] <= 0) delete p.inventory[itemId];
     t.inventory[itemId] = (t.inventory[itemId] || 0) + 1;
@@ -281,13 +257,13 @@ io.on('connection', (socket) => {
     io.to(targetId).emit('giftReceived', { from: p.name, fromId: socket.id, itemId });
   });
 
-  // --- Give a flower to a nearby player ---
-  socket.on('giveFlower', ({ targetId } = {}) => {
+  // --- Give a flower to a nearby player (consumes one from inventory) ---
+  socket.on('giveFlower', ({ targetId }) => {
     const p = players[socket.id], t = players[targetId];
-    if (!p || !t || targetId === socket.id) return;
+    if (!p || !t) return;
     const flowerId = FLOWER_IDS.find(f => p.inventory[f] > 0);
     if (!flowerId) { socket.emit('flowerDenied', { reason: 'none' }); return; }
-    if (!near(p, t, 3.5)) { socket.emit('flowerDenied', { reason: 'range' }); return; }
+    if (Math.hypot(p.x - t.x, p.z - t.z) > 3.5) { socket.emit('flowerDenied', { reason: 'range' }); return; }
     p.inventory[flowerId] -= 1;
     if (p.inventory[flowerId] <= 0) delete p.inventory[flowerId];
     p.flowersGiven += 1;
@@ -296,28 +272,28 @@ io.on('connection', (socket) => {
     io.to(targetId).emit('flowerReceived', { from: p.name, fromId: socket.id, itemId: flowerId });
   });
 
-  // --- Proposals ---
-  socket.on('sendProposal', ({ targetId } = {}) => {
+  // --- Proposals: propose to a nearby player, they accept or reject ---
+  socket.on('sendProposal', ({ targetId }) => {
     const p = players[socket.id], t = players[targetId];
-    if (!p || !t || targetId === socket.id) return;
-    if (!near(p, t, 3.5)) { socket.emit('proposalDenied', { reason: 'range' }); return; }
+    if (!p || !t) return;
+    if (Math.hypot(p.x - t.x, p.z - t.z) > 3.5) { socket.emit('proposalDenied', { reason: 'range' }); return; }
     io.to(targetId).emit('proposalReceived', { from: p.name, fromId: socket.id });
   });
-  socket.on('respondProposal', ({ proposerId, accepted } = {}) => {
+  socket.on('respondProposal', ({ proposerId, accepted }) => {
     const p = players[socket.id];
     if (!p || !players[proposerId]) return;
-    io.to(proposerId).emit('proposalResult', { by: p.name, accepted: !!accepted });
+    io.to(proposerId).emit('proposalResult', { by: p.name, accepted });
     if (accepted) {
       io.emit('coupleFormed', { aId: proposerId, bId: socket.id, aName: players[proposerId].name, bName: p.name });
     }
   });
 
-  // --- Treasure hunt ---
+  // --- Treasure hunt: open a chest for a randomized reward ---
   socket.on('claimTreasure', (chestId) => {
     const p = players[socket.id];
     const spot = treasureSpots.find(t => t.id === chestId);
     if (!p || !spot || claimedTreasures.has(chestId)) return;
-    if (!near(p, spot, 3)) return; // must actually be there (slightly generous for move-update lag)
+    if (Math.hypot(p.x - spot.x, p.z - spot.z) > 2.5) return; // must actually be there
     claimedTreasures.add(chestId);
     const reward = pickWeighted(TREASURE_REWARDS);
     let detail;
@@ -333,15 +309,14 @@ io.on('connection', (socket) => {
       detail = { type: 'collectible', name: reward.name };
     }
     p.treasuresFound += 1;
-    io.emit('treasureOpened', { chestId });
+    io.emit('treasureOpened', { chestId }); // remove the chest for everyone
     socket.emit('treasureReward', { chestId, reward: detail, balloons: p.balloons, inventory: p.inventory });
   });
 
-  // --- Delivery job (now validates that the player is actually at the marker) ---
+  // --- Delivery job ---
   socket.on('pickupDelivery', (jobId) => {
     const p = players[socket.id];
     if (!p || !deliveryJob || deliveryJob.id !== jobId || deliveryJob.status !== 'available') return;
-    if (!near(p, deliveryJob.pickup, 4)) return;
     deliveryJob.status = 'inProgress';
     deliveryJob.carrierId = socket.id;
     io.emit('deliveryUpdated', deliveryJob);
@@ -351,7 +326,6 @@ io.on('connection', (socket) => {
     const p = players[socket.id];
     if (!p || !deliveryJob || deliveryJob.id !== jobId) return;
     if (deliveryJob.status !== 'inProgress' || deliveryJob.carrierId !== socket.id) return;
-    if (!near(p, deliveryJob.dropoff, 4)) return;
     p.balloons += 30;
     io.emit('balloonCollected', { pickupId: null, by: socket.id, balloons: p.balloons });
     if (p.uid) creditRealAccount(p.uid, 30);
@@ -362,17 +336,18 @@ io.on('connection', (socket) => {
   socket.on('chatMessage', (text) => {
     const p = players[socket.id];
     if (!p || !text) return;
-    const now = Date.now();
-    if (now - lastChat < 500) return; // basic spam limit
-    lastChat = now;
     io.emit('chatMessage', { id: socket.id, name: p.name, text: String(text).slice(0, 200) });
   });
+
+  socket.on('voice-offer', ({ target, offer }) => io.to(target).emit('voice-offer', { from: socket.id, offer }));
+  socket.on('voice-answer', ({ target, answer }) => io.to(target).emit('voice-answer', { from: socket.id, answer }));
+  socket.on('voice-ice', ({ target, candidate }) => io.to(target).emit('voice-ice', { from: socket.id, candidate }));
 
   socket.on('disconnect', () => {
     const p = players[socket.id];
     if (p && p.drivingCarId) {
       delete occupiedCars[p.drivingCarId];
-      io.emit('carFreed', { carId: p.drivingCarId }); // car stays parked where it was left
+      io.emit('carFreed', { carId: p.drivingCarId }); // car stays parked wherever it was left
     }
     if (deliveryJob && deliveryJob.carrierId === socket.id) {
       deliveryJob.status = 'available';
