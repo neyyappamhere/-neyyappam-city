@@ -381,6 +381,12 @@
 <button id="chat-toggle"><i class="fa-solid fa-comment"></i></button>
 
 <div id="controls-hint">WASD to move &nbsp;•&nbsp; Drag to look</div>
+<div id="state-chip" style="display:none; position:absolute; top:108px; left:50%; transform:translateX(-50%); z-index:6; background:rgba(20,15,10,.8); color:#fff; padding:6px 14px; border-radius:16px; font-weight:700; font-size:.8em; pointer-events:none;"></div>
+<button id="shop-prompt" style="display:none; position:absolute; left:50%; bottom:150px; transform:translateX(-50%); z-index:6; background:linear-gradient(135deg,#FE019A,#9b5de5); color:#fff; padding:10px 20px; border:none; border-radius:20px; font-weight:700; font-size:.85em; cursor:pointer;">🛒 Press B or tap to shop</button>
+<div id="fly-btns" style="display:none; position:absolute; right:16px; bottom:150px; z-index:6; flex-direction:column; gap:10px;">
+  <button id="fly-up" style="width:54px;height:54px;border-radius:50%;border:none;background:rgba(20,15,10,.85);color:#fff;font-size:1.2em;">▲</button>
+  <button id="fly-down" style="width:54px;height:54px;border-radius:50%;border:none;background:rgba(20,15,10,.85);color:#fff;font-size:1.2em;">▼</button>
+</div>
 <button id="vehicle-prompt" style="display:none; position:absolute; left:50%; bottom:100px; transform:translateX(-50%); z-index:6; background:rgba(20,15,10,.85); color:#fff; padding:10px 20px; border:none; border-radius:20px; font-weight:700; font-size:.85em; cursor:pointer;">Press E to enter</button>
 
 <div id="joystick-zone">
@@ -679,6 +685,165 @@ for (let gx = -GRID/2; gx < GRID/2; gx++) {
   }
 }
 
+
+/* =========================================================
+   1b) WORLD EXTRAS — river (swimmable), the Shop, airfield + plane
+   ========================================================= */
+function emojiSprite(ch, scale) {
+  const cv = document.createElement('canvas'); cv.width = cv.height = 128;
+  const g = cv.getContext('2d');
+  g.font = '96px serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText(ch, 64, 70);
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cv), transparent: true }));
+  sp.scale.set(scale, scale, 1);
+  return sp;
+}
+
+// ---- River: runs north–south just east of the city ----
+const RIVER = { x1: 66, x2: 80 };
+function isInWater(x, z) { return x > RIVER.x1 && x < RIVER.x2 && Math.abs(z) < 88; }
+
+const waterCanvas = document.createElement('canvas'); waterCanvas.width = waterCanvas.height = 128;
+{
+  const g = waterCanvas.getContext('2d');
+  g.fillStyle = '#2f9bd8'; g.fillRect(0, 0, 128, 128);
+  g.strokeStyle = 'rgba(255,255,255,0.38)'; g.lineWidth = 3;
+  for (let i = 0; i < 4; i++) {
+    g.beginPath();
+    for (let x = 0; x <= 128; x += 4) {
+      const y = 16 + i*32 + Math.sin(x/128*Math.PI*2 + i)*6;
+      x === 0 ? g.moveTo(x, y) : g.lineTo(x, y);
+    }
+    g.stroke();
+  }
+}
+const waterTex = new THREE.CanvasTexture(waterCanvas);
+waterTex.wrapS = waterTex.wrapT = THREE.RepeatWrapping;
+waterTex.repeat.set(3, 28);
+{
+  const water = new THREE.Mesh(
+    new THREE.PlaneGeometry(RIVER.x2 - RIVER.x1, 176),
+    new THREE.MeshStandardMaterial({ map: waterTex, roughness: 0.25 })
+  );
+  water.rotation.x = -Math.PI/2;
+  water.position.set((RIVER.x1 + RIVER.x2)/2, 0.07, 0);
+  scene.add(water);
+  const sandMat = new THREE.MeshStandardMaterial({ color: 0xe6d3a3 });
+  [RIVER.x1 - 2, RIVER.x2 + 2].forEach(x => {
+    const bank = new THREE.Mesh(new THREE.BoxGeometry(4, 0.1, 176), sandMat);
+    bank.position.set(x, 0.05, 0);
+    scene.add(bank);
+  });
+  // wooden dock to jump in from
+  const dock = new THREE.Mesh(new THREE.BoxGeometry(9, 0.2, 2.6), new THREE.MeshStandardMaterial({ color: 0x8b5a2b }));
+  dock.position.set(66, 0.2, 10);
+  scene.add(dock);
+  const swimSign = emojiSprite('🏊', 2.2); swimSign.position.set(63, 2.2, 10); scene.add(swimSign);
+}
+
+// ---- The Shop: walk up to the counter (plaza block at the city centre) ----
+const SHOP_POS = { x: 10, z: 15.5 }, SHOP_RANGE = 7;
+function nearShop() {
+  return !drivingCarId && Math.hypot(myAvatar.position.x - SHOP_POS.x, myAvatar.position.z - SHOP_POS.z) < SHOP_RANGE;
+}
+{
+  const cx = 10, cz = 9, w = 12, d = 8, h = 5;
+  const plaza = new THREE.Mesh(new THREE.BoxGeometry(14, 0.25, 14), new THREE.MeshStandardMaterial({ color: 0xd8d6cc }));
+  plaza.position.set(10, 0.12, 10); scene.add(plaza);
+
+  const body = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshStandardMaterial({ color: 0x1f8a8a }));
+  body.position.set(cx, h/2 + 0.25, cz); scene.add(body);
+  const roof = new THREE.Mesh(new THREE.BoxGeometry(w + 0.6, 0.3, d + 0.6), new THREE.MeshStandardMaterial({ color: 0x2b2b33 }));
+  roof.position.set(cx, h + 0.4, cz); scene.add(roof);
+
+  // striped awning
+  for (let i = 0; i < 6; i++) {
+    const stripe = new THREE.Mesh(new THREE.BoxGeometry(w/6, 0.12, 2.4),
+      new THREE.MeshStandardMaterial({ color: i % 2 ? 0xffffff : 0xe63946 }));
+    stripe.position.set(cx - w/2 + w/12 + i*(w/6), 3.6, cz + d/2 + 1.1);
+    stripe.rotation.x = 0.22;
+    scene.add(stripe);
+  }
+  // window + door
+  const win = new THREE.Mesh(new THREE.PlaneGeometry(4, 1.8), new THREE.MeshStandardMaterial({ color: 0x9fd6f0 }));
+  win.position.set(cx - 3, 2.3, cz + d/2 + 0.03); scene.add(win);
+  const door = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 2.4), new THREE.MeshStandardMaterial({ color: 0x5a3a1a }));
+  door.position.set(cx + 3, 1.45, cz + d/2 + 0.03); scene.add(door);
+
+  // sign
+  const sc = document.createElement('canvas'); sc.width = 512; sc.height = 128;
+  const sg = sc.getContext('2d');
+  sg.fillStyle = '#1a1a22'; sg.fillRect(0, 0, 512, 128);
+  sg.fillStyle = '#FFD700'; sg.font = 'bold 54px sans-serif'; sg.textAlign = 'center'; sg.textBaseline = 'middle';
+  sg.fillText('🛒 SHOP 🌹🔫', 256, 68);
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(7, 1.75), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(sc) }));
+  sign.position.set(cx, 4.35, cz + d/2 + 0.05); scene.add(sign);
+
+  // counter
+  const counter = new THREE.Mesh(new THREE.BoxGeometry(6, 1, 0.9), new THREE.MeshStandardMaterial({ color: 0x8b5a2b }));
+  counter.position.set(cx, 0.75, 13.9); scene.add(counter);
+
+  // flower buckets with roses
+  for (let i = 0; i < 4; i++) {
+    const bucket = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.24, 0.5, 10), new THREE.MeshStandardMaterial({ color: 0x555566 }));
+    bucket.position.set(cx - 5 + i*0.85, 0.5, 14.9); scene.add(bucket);
+    const rose = emojiSprite('🌹', 0.9); rose.position.set(cx - 5 + i*0.85, 1.1, 14.9); scene.add(rose);
+  }
+  // gun rack on the wall
+  const rack = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.12, 0.1), new THREE.MeshStandardMaterial({ color: 0x2b2b33 }));
+  rack.position.set(cx + 4.6, 2.5, cz + d/2 + 0.08); scene.add(rack);
+  [-0.8, 0, 0.8].forEach(dx => {
+    const gun = emojiSprite('🔫', 0.75); gun.position.set(cx + 4.6 + dx, 2.9, cz + d/2 + 0.2); scene.add(gun);
+  });
+  const pin = emojiSprite('🛒', 2.4); pin.position.set(cx, h + 2.6, cz); scene.add(pin);
+}
+
+// ---- Airfield + plane (south-west… north edge of the map) ----
+{
+  const runway = new THREE.Mesh(new THREE.BoxGeometry(90, 0.06, 12), new THREE.MeshStandardMaterial({ color: 0x2d2d33 }));
+  runway.position.set(0, 0.03, -76); scene.add(runway);
+  const dashMat = new THREE.MeshStandardMaterial({ color: 0xf5f5f0 });
+  for (let x = -40; x <= 40; x += 8) {
+    const dash = new THREE.Mesh(new THREE.BoxGeometry(4, 0.02, 0.4), dashMat);
+    dash.position.set(x, 0.08, -76); scene.add(dash);
+  }
+  const tag = emojiSprite('✈️', 3); tag.position.set(-35, 6, -76); scene.add(tag);
+}
+function addPlane(x, z, rotY) {
+  const g = new THREE.Group();
+  const white = new THREE.MeshStandardMaterial({ color: 0xf2f2f2 });
+  const red = new THREE.MeshStandardMaterial({ color: 0xe63946 });
+  const dark = new THREE.MeshStandardMaterial({ color: 0x1a1a1a });
+  const glass = new THREE.MeshStandardMaterial({ color: 0x9fc4e8 });
+  const add = (mesh, px, py, pz) => { mesh.position.set(px, py, pz); g.add(mesh); return mesh; };
+
+  const fus = add(new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.3, 4.2, 12), white), 0, 1.15, 0);
+  fus.rotation.z = -Math.PI/2;                                    // nose points +x (car forward convention)
+  const spinner = add(new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.4, 10), red), 2.3, 1.15, 0);
+  spinner.rotation.z = -Math.PI/2;
+  const prop = add(new THREE.Mesh(new THREE.BoxGeometry(0.04, 2.0, 0.14), dark), 2.55, 1.15, 0);
+  add(new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.1, 7.2), white), 0.2, 1.45, 0);   // wing
+  add(new THREE.Mesh(new THREE.BoxGeometry(1.12, 0.11, 0.6), red), 0.2, 1.45, 3.3);
+  add(new THREE.Mesh(new THREE.BoxGeometry(1.12, 0.11, 0.6), red), 0.2, 1.45, -3.3);
+  add(new THREE.Mesh(new THREE.BoxGeometry(0.9, 1.1, 0.1), red), -1.9, 1.75, 0);    // tail fin
+  add(new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.08, 2.4), white), -1.9, 1.3, 0);  // stabilizer
+  const cockpit = add(new THREE.Mesh(new THREE.SphereGeometry(0.4, 10, 8), glass), 0.7, 1.6, 0);
+  cockpit.scale.set(1.3, 0.8, 0.9);
+  [-0.9, 0.9].forEach(zz => {
+    add(new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.4, 0.06), dark), 0.7, 0.55, zz);
+    const wheel = add(new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.12, 12), dark), 0.7, 0.2, zz);
+    wheel.rotation.x = Math.PI/2;
+  });
+  const tail = add(new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.1, 8), dark), -1.8, 0.15, 0);
+  tail.rotation.x = Math.PI/2;
+
+  g.position.set(x, 0, z);
+  g.rotation.y = rotY;
+  scene.add(g);
+  cars['plane_0'] = { id: 'plane_0', group: g, occupiedBy: null, isPlane: true, prop };
+}
+addPlane(-35, -76, 0);
+
 // Floating balloon pickups — matches the site's real currency, not generic cash
 function makeBalloonSprite() {
   const canvas = document.createElement('canvas');
@@ -888,6 +1053,12 @@ function makeLabel(text) {
 let myGender = 'other';
 let myOutfitColor = '#9b5de5';
 let myHairStyle = 'short';
+{
+  const keeper = makeAvatarMesh('female', '#ffb703', 'pony');
+  keeper.position.set(10, 0.25, 12.7);
+  keeper.add(makeLabel('Shopkeeper'));
+  scene.add(keeper);
+}
 let myAvatar = makeAvatarMesh(myGender, myOutfitColor, myHairStyle);
 scene.add(myAvatar);
 const others = {};
@@ -977,11 +1148,12 @@ const vehiclePrompt = document.getElementById('vehicle-prompt');
 const stats = { distanceTraveled: 0, deliveriesCompleted: 0, carsDriven: 0 };
 
 function findNearbyCar() {
-  let nearest = null, nearestDist = 2.2; // must be within ~2 units to interact
+  let nearest = null, nearestDist = Infinity;
   for (const id in cars) {
     const c = cars[id];
-    const d = c.group.position.distanceTo(myAvatar.position);
-    if (d < nearestDist) { nearest = c; nearestDist = d; }
+    const d = Math.hypot(c.group.position.x - myAvatar.position.x, c.group.position.z - myAvatar.position.z);
+    const reach = c.isPlane ? 4 : 2.2; // planes are bigger
+    if (d < reach && d < nearestDist) { nearest = c; nearestDist = d; }
   }
   return nearest;
 }
@@ -1010,19 +1182,31 @@ function enterVehicle(carId) {
   myAvatar.visible = false;
   vehiclePrompt.textContent = 'Press E to exit';
   vehiclePrompt.style.display = 'block';
-  document.getElementById('controls-hint').textContent = 'WASD to drive • E to exit';
+  if (c.isPlane) {
+    planeSpeed = 0; planeVy = 0;
+    vehiclePrompt.textContent = 'Press E to exit (on the ground)';
+    document.getElementById('controls-hint').textContent = 'W/S throttle • A/D turn • Space climb • F dive • E exit';
+    document.getElementById('fly-btns').style.display = 'flex';
+  } else {
+    document.getElementById('controls-hint').textContent = 'WASD to drive • E to exit';
+  }
   stats.carsDriven++;
 }
 
 function exitVehicle() {
   if (!drivingCarId) return;
   const c = cars[drivingCarId];
+  if (c.isPlane && c.group.position.y > 0.6) { showToast('Land the plane first ✈️'); return; }
+  const off = c.isPlane ? 3.6 : 1.6;
+  c.group.rotation.z = 0;
+  document.getElementById('fly-btns').style.display = 'none';
+  setChip(null);
   const forward = { x: Math.cos(c.group.rotation.y), z: -Math.sin(c.group.rotation.y) };
   // Step out to the left side of the car rather than through it
   myAvatar.position.set(
-    c.group.position.x - forward.z * 1.6,
+    c.group.position.x - forward.z * off,
     0,
-    c.group.position.z + forward.x * 1.6
+    c.group.position.z + forward.x * off
   );
   myAvatar.rotation.y = c.group.rotation.y;
   myAvatar.visible = true;
@@ -1036,6 +1220,7 @@ function exitVehicle() {
 function updateDriving() {
   const c = cars[drivingCarId];
   if (!c) { drivingCarId = null; return; }
+  if (c.isPlane) { updateFlying(c); return; }
 
   let throttle = 0, steer = 0;
   if (keys['w']) throttle += 1;
@@ -1056,6 +1241,7 @@ function updateDriving() {
   c.group.position.x += forward.x * carSpeed;
   c.group.position.z += forward.z * carSpeed;
   stats.distanceTraveled += Math.abs(carSpeed);
+  if (c.group.position.x > RIVER.x1 - 2.5) { c.group.position.x = RIVER.x1 - 2.5; carSpeed = 0; } // cars stop at the riverbank
 
   // Chase camera behind the car — now with vertical pitch for a full 360° view
   const camDist = 7;
@@ -1067,6 +1253,65 @@ function updateDriving() {
   socket.emit('driveCar', { carId: drivingCarId, x: c.group.position.x, y: 0, z: c.group.position.z, rotY: c.group.rotation.y });
 }
 
+let planeSpeed = 0, planeVy = 0, flyUpHeld = false, flyDownHeld = false;
+const stateChip = document.getElementById('state-chip');
+function setChip(txt) {
+  if (txt) { stateChip.textContent = txt; stateChip.style.display = 'block'; }
+  else stateChip.style.display = 'none';
+}
+[['fly-up', v => flyUpHeld = v], ['fly-down', v => flyDownHeld = v]].forEach(([id, set]) => {
+  const el = document.getElementById(id);
+  el.addEventListener('pointerdown', e => { e.preventDefault(); set(true); });
+  ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => el.addEventListener(ev, () => set(false)));
+});
+
+function updateFlying(c) {
+  let throttle = 0, steer = 0;
+  if (keys['w']) throttle += 1;
+  if (keys['s']) throttle -= 1;
+  if (keys['a']) steer += 1;
+  if (keys['d']) steer -= 1;
+  throttle += -joyVec.y; steer += -joyVec.x;
+  const up = keys[' '] || keys['q'] || flyUpHeld;
+  const down = keys['f'] || keys['shift'] || flyDownHeld;
+
+  const maxSpeed = 0.75, takeoffSpeed = 0.3;
+  planeSpeed += throttle * 0.008;
+  planeSpeed *= 0.996;
+  planeSpeed = Math.max(0, Math.min(maxSpeed, planeSpeed));
+
+  const p = c.group.position;
+  const airborne = p.y > 0.05;
+  const canLift = planeSpeed >= takeoffSpeed;
+  if (up && canLift) planeVy += 0.006;
+  else if (down) planeVy -= 0.006;
+  else planeVy *= 0.96;
+  if (!canLift && airborne) planeVy -= 0.01;          // too slow: stall and sink
+  planeVy = Math.max(-0.25, Math.min(0.25, planeVy));
+  p.y += planeVy;
+  if (p.y <= 0) { p.y = 0; planeVy = 0; if (!throttle) planeSpeed *= 0.97; }   // wheels down, rolling friction
+  if (p.y > 110) { p.y = 110; planeVy = Math.min(planeVy, 0); }
+
+  if (planeSpeed > 0.02) c.group.rotation.y += steer * 0.028 * (airborne ? 1 : 0.6);
+  const targetPitch = Math.max(-0.45, Math.min(0.45, planeVy * 3));
+  c.group.rotation.z += (targetPitch - c.group.rotation.z) * 0.1;
+
+  const forward = { x: Math.cos(c.group.rotation.y), z: -Math.sin(c.group.rotation.y) };
+  p.x = Math.max(-150, Math.min(150, p.x + forward.x * planeSpeed));
+  p.z = Math.max(-150, Math.min(150, p.z + forward.z * planeSpeed));
+  c.prop.rotation.x += 0.35 + planeSpeed * 1.5;
+  stats.distanceTraveled += planeSpeed;
+
+  const camDist = 12;
+  camera.position.x = p.x - forward.x * camDist * Math.cos(camPitch);
+  camera.position.z = p.z - forward.z * camDist * Math.cos(camPitch);
+  camera.position.y = p.y + 2.5 + camDist * Math.sin(camPitch);
+  camera.lookAt(p.x, p.y + 1.2, p.z);
+
+  setChip(`✈️ ${Math.round(p.y)} m  •  ${Math.round(planeSpeed * 100)} kts` + (!airborne && canLift ? '  •  hold Space to take off' : ''));
+  socket.emit('driveCar', { carId: c.id, x: p.x, y: p.y, z: p.z, rotY: c.group.rotation.y });
+}
+
 function updateMovement() {
   if (drivingCarId) { updateDriving(); return; }
 
@@ -1076,19 +1321,25 @@ function updateMovement() {
   if (keys['a']) dx -= 1;
   if (keys['d']) dx += 1;
   dx += joyVec.x; dz += joyVec.y;
+  const swimming = isInWater(myAvatar.position.x, myAvatar.position.z);
   if (dx || dz) {
     const len = Math.hypot(dx,dz) || 1;
     dx/=len; dz/=len;
     const moveX = dx*Math.cos(camYaw) - dz*Math.sin(camYaw);
     const moveZ = dx*Math.sin(camYaw) + dz*Math.cos(camYaw);
-    myAvatar.position.x += moveX*speed;
-    myAvatar.position.z += moveZ*speed;
+    const sp = swimming ? speed * 0.55 : speed;   // swimming is slower
+    myAvatar.position.x += moveX*sp;
+    myAvatar.position.z += moveZ*sp;
     myAvatar.rotation.y = Math.atan2(moveX, moveZ);
     stats.distanceTraveled += speed;
     checkBalloonPickup();
     checkDeliveryProximity();
     checkTreasureProximity();
   }
+  // Sink into the water while swimming, with a gentle bob
+  const targetY = swimming ? -0.65 + Math.sin(performance.now()/350) * 0.06 : 0;
+  myAvatar.position.y += (targetY - myAvatar.position.y) * 0.25;
+  setChip(swimming ? '🏊 Swimming' : null);
   const camDist = 6;
   camera.position.x = myAvatar.position.x - Math.sin(camYaw)*camDist*Math.cos(camPitch);
   camera.position.z = myAvatar.position.z - Math.cos(camYaw)*camDist*Math.cos(camPitch);
@@ -1097,8 +1348,29 @@ function updateMovement() {
 
   // Show/hide the "Press E to enter" prompt based on proximity to a free car
   const nearby = findNearbyCar();
-  vehiclePrompt.style.display = (nearby && !nearby.occupiedBy) ? 'block' : 'none';
+  if (nearby && !nearby.occupiedBy) {
+    vehiclePrompt.textContent = nearby.isPlane ? 'Press E to fly ✈️' : 'Press E to enter';
+    vehiclePrompt.style.display = 'block';
+  } else vehiclePrompt.style.display = 'none';
+
+  const atShop = nearShop();
+  shopPrompt.style.display = atShop ? 'block' : 'none';
+  if (!atShop && document.getElementById('shop-overlay').style.display !== 'none') {
+    document.getElementById('shop-overlay').style.display = 'none'; // walked away from the counter
+  }
 }
+
+const shopPrompt = document.getElementById('shop-prompt');
+function openShop() {
+  if (document.getElementById('name-gate').style.display !== 'none') return;
+  if (!nearShop()) { showToast('🛒 Walk up to the Shop counter in the city centre to buy things'); return; }
+  renderShop();
+  document.getElementById('shop-overlay').style.display = 'flex';
+}
+shopPrompt.addEventListener('click', openShop);
+addEventListener('keydown', e => {
+  if (e.key.toLowerCase() === 'b' && !/INPUT|TEXTAREA/.test((e.target.tagName || ''))) openShop();
+});
 
 function checkDeliveryProximity() {
   if (!currentJob) return;
@@ -1214,7 +1486,12 @@ socket.on('carExited', ({ carId, driverId, x, y, z, rotY }) => {
     others[driverId].group.position.set(x, 0, z);
   }
 });
-socket.on('carFreed', ({ carId }) => { if (cars[carId]) cars[carId].occupiedBy = null; });
+socket.on('carFreed', ({ carId }) => {
+  const c = cars[carId];
+  if (!c) return;
+  c.occupiedBy = null;
+  if (c.isPlane) { c.group.position.y = 0; c.group.rotation.z = 0; c.target = null; } // pilot left mid-air: park it
+});
 socket.on('carDenied', () => { /* someone else got there first — no action needed */ });
 
 // --- Delivery job updates ---
@@ -1256,7 +1533,7 @@ socket.on('treasureReward', ({ reward, balloons }) => {
 let shopCatalog = [];
 let myInventory = {};
 const CATEGORY_LABELS = {
-  weapon: '🔫 Toy Weapons', flower: '🌹 Flowers', food: '🍔 Food', drink: '🥤 Drinks',
+  weapon: '🔫 Guns & Weapons', flower: '🌹 Flowers', food: '🍔 Food', drink: '🥤 Drinks',
   party: '🎉 Party', accessory: '🕶️ Accessories', clothing: '🧥 Clothing'
 };
 function itemLabel(itemId) {
@@ -1272,7 +1549,7 @@ socket.on('purchaseOk', ({ itemId, balloons, inventory }) => {
   renderInventory();
 });
 socket.on('purchaseDenied', ({ reason }) => {
-  showToast(reason === 'insufficient' ? "Not enough balloons 🎈 for that" : "Purchase failed");
+  showToast(reason === 'insufficient' ? "Not enough balloons 🎈 for that" : reason === 'far' ? "Step up to the shop counter first 🛒" : "Purchase failed");
 });
 socket.on('inventoryUpdated', (inv) => { myInventory = inv; renderInventory(); });
 
@@ -1528,7 +1805,7 @@ document.getElementById('stats-btn').onclick = () => {
 };
 document.getElementById('stats-close').onclick = () => { document.getElementById('stats-overlay').style.display = 'none'; };
 
-document.getElementById('shop-btn').onclick = () => { renderShop(); document.getElementById('shop-overlay').style.display = 'flex'; };
+document.getElementById('shop-btn').onclick = openShop;
 document.getElementById('shop-close').onclick = () => { document.getElementById('shop-overlay').style.display = 'none'; };
 document.getElementById('inventory-btn').onclick = () => { renderInventory(); document.getElementById('inventory-overlay').style.display = 'flex'; };
 document.getElementById('inventory-close').onclick = () => { document.getElementById('inventory-overlay').style.display = 'none'; };
@@ -1540,6 +1817,8 @@ const clock = new THREE.Clock();
 function animate() {
   requestAnimationFrame(animate);
   const t = clock.getElapsedTime();
+  waterTex.offset.y = t * 0.05;
+  Object.values(cars).forEach(c => { if (c.prop && c.occupiedBy && c.occupiedBy !== socket.id) c.prop.rotation.x += 0.6; });
   updateMovement();
   updateWaypointReadout();
   if (waypointBeacon.visible) waypointBeacon.position.y = 1.2 + Math.sin(t*3)*0.15;
