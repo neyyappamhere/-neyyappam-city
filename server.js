@@ -76,6 +76,9 @@ const ITEMS = [
   { id: 'water_gun',   name: 'Water Gun',       category: 'weapon',    price: 22, emoji: '🔫' },
   { id: 'toy_blaster', name: 'Toy Blaster',     category: 'weapon',    price: 30, emoji: '🔫' },
   { id: 'nerf_bow',    name: 'Foam Dart Bow',   category: 'weapon',    price: 26, emoji: '🏹' },
+  { id: 'pistol',      name: 'Pistol',          category: 'weapon',    price: 60, emoji: '🔫' },
+  { id: 'shotgun',     name: 'Shotgun',         category: 'weapon',    price: 90, emoji: '🔫' },
+  { id: 'rose_dozen',  name: 'Dozen Roses',     category: 'flower',    price: 90, emoji: '🌹' },
   { id: 'party_hat',   name: 'Party Hat',       category: 'party',     price: 12, emoji: '🎉' },
   { id: 'confetti',    name: 'Confetti Popper', category: 'party',     price: 10, emoji: '🎊' },
   { id: 'balloon_bunch',name:'Balloon Bunch',   category: 'party',     price: 20, emoji: '🎈' },
@@ -84,6 +87,11 @@ const ITEMS = [
   { id: 'cap',         name: 'Snapback Cap',    category: 'clothing',  price: 16, emoji: '🧢' },
   { id: 'jacket',      name: 'Bomber Jacket',   category: 'clothing',  price: 30, emoji: '🧥' },
 ];
+// The Shop building stands on the central plaza. Purchases are only accepted
+// when the buyer is actually standing at the counter (client uses 7, the
+// server allows a little slack for network lag).
+const SHOP_POS = { x: 10, z: 15.5 };
+const SHOP_RANGE = 8;
 const ITEMS_BY_ID = Object.fromEntries(ITEMS.map(i => [i.id, i]));
 const FLOWER_IDS = ITEMS.filter(i => i.category === 'flower').map(i => i.id);
 
@@ -237,6 +245,7 @@ io.on('connection', (socket) => {
     const p = players[socket.id];
     const item = ITEMS.find(i => i.id === itemId);
     if (!p || !item) return;
+    if (Math.hypot(p.x - SHOP_POS.x, p.z - SHOP_POS.z) > SHOP_RANGE) { socket.emit('purchaseDenied', { itemId, reason: 'far' }); return; }
     if (p.balloons < item.price) { socket.emit('purchaseDenied', { itemId, reason: 'insufficient' }); return; }
     p.balloons -= item.price;
     p.inventory[itemId] = (p.inventory[itemId] || 0) + 1;
