@@ -8,6 +8,12 @@
 
 const express = require('express');
 const http = require('http');
+const https = require('https');
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
+const net = require('net');
+const tls = require('tls');
 const { Server } = require('socket.io');
 
 const app = express();
@@ -33,9 +39,9 @@ app.use(express.static('public', {
 
 // --- Voice chat: issues a LiveKit access token. The client (city_world.php) calls
 // /livekit-token and expects JSON { token, url }. Set these env vars on the server:
-//   wss://neyyappam-city-36cwtto5.livekit.cloud         e.g. wss://your-project.livekit.cloud
-//   APIgb7j67qobq6H     from your LiveKit project settings
-//   ••••••••••••••••••••••••••••••••  from your LiveKit project settings
+//   LIVEKIT_URL         e.g. wss://your-project.livekit.cloud
+//   LIVEKIT_API_KEY     from your LiveKit project settings
+//   LIVEKIT_API_SECRET  from your LiveKit project settings
 const { AccessToken } = require('livekit-server-sdk');
 app.get('/livekit-token', async (req, res) => {
   const { LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET } = process.env;
@@ -115,6 +121,11 @@ const ITEMS = [
   { id: 'pazhampori',   name: 'Pazhampori',       category: 'chayakkada', price: 6, emoji: '🍌', shop: 'tea' },
   { id: 'unniyappam',   name: 'Unniyappam',       category: 'chayakkada', price: 7, emoji: '🥮', shop: 'tea' },
   { id: 'halwa',        name: 'Kozhikodan Halwa', category: 'chayakkada', price: 9, emoji: '🍬', shop: 'tea' },
+  // --- Karavakkari chechi's milk stall ---
+  { id: 'palu',         name: 'Fresh Palu (milk)', category: 'dairy', price: 5, emoji: '🥛', shop: 'milk' },
+  { id: 'thairu',       name: 'Thairu (curd)',     category: 'dairy', price: 6, emoji: '🥣', shop: 'milk' },
+  { id: 'sambaram',     name: 'Sambaram (buttermilk)', category: 'dairy', price: 4, emoji: '🧋', shop: 'milk' },
+  { id: 'nei',          name: 'Nei (ghee)',        category: 'dairy', price: 12, emoji: '🧈', shop: 'milk' },
 ];
 // The Shop building stands on the central plaza. Purchases are only accepted
 // when the buyer is actually standing at the counter (client uses 7, the
@@ -125,9 +136,203 @@ const SHOP_RANGE = 8;
 const TEA_POS = { x: -10, z: 8 };
 const RADIO_POS = { x: -12.8, z: 9.7 };
 const RADIO_RANGE = 8;
-// Shared radio: one on/off + station index for the whole town. The client owns the station list
-// (STATIONS in city_world.php) and plays the live stream locally, so everyone hears the same broadcast.
+const MILK_POS = { x: -6, z: -5 };   // Karavakkari chechi's milk stall (must match the client)
+
+/* =====================================================================
+   RADIO HUB — one shared Malayalam radio for the whole town.
+   * Stations are discovered automatically from the open Radio Browser directory (language=malayalam,
+     working streams only, "old songs"-style names first), plus anything you list in stations.json:
+         [ { "name": "My Old Songs FM", "url": "https://example.com/stream.mp3" } ]
+   * The server opens ONE connection per station and relays it to every listener over your own https,
+     so http-only streams work, nothing is blocked as mixed content, and everyone hears the same broadcast.
+   * Dead stations are detected, marked down for 2 minutes, and the radio skips to the next one.
+   ===================================================================== */
+const UA = 'NeyyappamCity/1.0 (+https://neyyappam.com)';
+const RB_MIRRORS = ['https://de1.api.radio-browser.info', 'https://nl1.api.radio-browser.info', 'https://at1.api.radio-browser.info'];
+const OLD_RE = /old|melod|gold|evergreen|classic|nostalg|retro|vintage|\b(70|80|90)s\b/i;
+const hub = { list: [], byId: {} };
 let radio = { on: true, station: 0 };
+
+function stationId(url) { return crypto.createHash('sha1').update(url).digest('hex').slice(0, 10); }
+function makeStation(name, url, kind) {
+  return { id: stationId(url), name: String(name).trim().slice(0, 40) || 'Radio', url, kind,
+           clients: new Set(), up: null, connecting: false, ready: false, ctype: 'audio/mpeg',
+           recent: [], recentBytes: 0, waiters: [], downUntil: 0, idleTimer: null };
+}
+function radioPayload() {
+  const now = Date.now();
+  return { on: radio.on, station: radio.station,
+           stations: hub.list.map(s => ({ id: s.id, name: s.name, kind: s.kind, down: s.downUntil > now })) };
+}
+
+function broadcast(st, chunk) {
+  st.recent.push(chunk); st.recentBytes += chunk.length;
+  while (st.recentBytes > 16384 && st.recent.length > 1) st.recentBytes -= st.recent.shift().length;
+  for (const c of st.clients) {
+    if (c.writableLength > 1500000) { c.destroy(); st.clients.delete(c); continue; } // listener too slow: drop it
+    c.write(chunk);
+  }
+}
+function hubStationDown(st) {
+  const cur = hub.list[radio.station];
+  if (cur === st && hub.list.length > 1) {
+    for (let i = 1; i < hub.list.length; i++) {
+      const j = (radio.station + i) % hub.list.length;
+      if (hub.list[j].downUntil < Date.now()) { radio.station = j; break; }
+    }
+  }
+  io.emit('radioState', radioPayload());
+}
+function failUp(st, why) {
+  st.connecting = false; st.up = null; st.ready = false;
+  st.downUntil = Date.now() + 2 * 60 * 1000;
+  console.warn(`[radio] ${st.name} is off air: ${why}`);
+  st.waiters.splice(0).forEach(fn => fn(false));
+  hubStationDown(st);
+}
+function startUpstream(st) {
+  if (st.up || st.connecting) return;
+  st.connecting = true; st.ready = false;
+  // Stream is connected: remember the handle, flush waiting listeners, reconnect automatically if it drops.
+  const live = (handle, contentType) => {
+    st.ctype = /audio|mpeg|aac|ogg/i.test(contentType || '') ? contentType : 'audio/mpeg';
+    st.connecting = false; st.up = handle; st.ready = true; st.downUntil = 0; st.recent = []; st.recentBytes = 0;
+    console.log(`[radio] ${st.name} is live`);
+    st.waiters.splice(0).forEach(fn => fn(true));
+    return () => {
+      if (st.up !== handle) return;
+      st.up = null; st.ready = false;
+      if (st.clients.size) setTimeout(() => startUpstream(st), 1500);
+    };
+  };
+  // Fallback for old Shoutcast servers that answer "ICY 200 OK", which Node's HTTP parser refuses.
+  const rawGo = (u, hop) => {
+    const secure = u.protocol === 'https:', port = +u.port || (secure ? 443 : 80);
+    const sock = (secure ? tls : net).connect({ host: u.hostname, port, servername: u.hostname });
+    let buf = Buffer.alloc(0), headerDone = false, ended = null;
+    sock.setTimeout(10000, () => sock.destroy(new Error('timed out')));
+    sock.on(secure ? 'secureConnect' : 'connect', () => sock.write(
+      `GET ${u.pathname}${u.search} HTTP/1.0\r\nHost: ${u.host}\r\nUser-Agent: ${UA}\r\nIcy-MetaData: 0\r\nAccept: */*\r\nConnection: close\r\n\r\n`));
+    sock.on('data', (d) => {
+      if (headerDone) return broadcast(st, d);
+      buf = Buffer.concat([buf, d]);
+      const end = buf.indexOf('\r\n\r\n');
+      if (end < 0) { if (buf.length > 16384) sock.destroy(new Error('bad headers')); return; }
+      headerDone = true;
+      const head = buf.slice(0, end).toString('latin1').split('\r\n'), body = buf.slice(end + 4);
+      const status = parseInt((head[0].match(/\s(\d{3})/) || [])[1], 10), headers = {};
+      head.slice(1).forEach(l => { const k = l.indexOf(':'); if (k > 0) headers[l.slice(0, k).trim().toLowerCase()] = l.slice(k + 1).trim(); });
+      if ([301, 302, 303, 307, 308].includes(status) && headers.location && hop < 5) { sock.destroy(); return go(new URL(headers.location, u).toString(), hop + 1); }
+      if (status !== 200) { sock.destroy(); return failUp(st, 'HTTP ' + status); }
+      ended = live(sock, headers['content-type']);
+      if (body.length) broadcast(st, body);
+    });
+    sock.on('error', (e) => { if (!st.ready) failUp(st, e.message); });
+    sock.on('close', () => { if (ended) ended(); });
+  };
+  const go = (urlStr, hop) => {
+    let u;
+    try { u = new URL(urlStr); } catch (e) { return failUp(st, 'bad url'); }
+    const lib = u.protocol === 'https:' ? https : http;
+    const req = lib.get(u, { headers: { 'User-Agent': UA, 'Icy-MetaData': '0', 'Accept': '*/*' }, timeout: 10000 }, (res) => {
+      if ([301, 302, 303, 307, 308].includes(res.statusCode) && res.headers.location && hop < 5) {
+        res.resume(); return go(new URL(res.headers.location, u).toString(), hop + 1);
+      }
+      if (res.statusCode !== 200) { res.resume(); return failUp(st, 'HTTP ' + res.statusCode); }
+      const ended = live(req, res.headers['content-type']);
+      res.on('data', (chunk) => broadcast(st, chunk));
+      res.on('end', ended); res.on('close', ended); res.on('error', ended);
+    });
+    req.on('timeout', () => req.destroy(new Error('timed out')));
+    req.on('error', (e) => {
+      if (st.ready) return;
+      if (/Parse Error|HPE_/.test(e.message + (e.code || ''))) return rawGo(u, hop);   // ICY-style reply
+      failUp(st, e.message);
+    });
+  };
+  go(st.url, 0);
+}
+function scheduleIdleClose(st) {
+  clearTimeout(st.idleTimer);
+  st.idleTimer = setTimeout(() => {
+    if (!st.clients.size && st.up) { const r = st.up; st.up = null; st.ready = false; r.destroy(); }
+  }, 20000);
+}
+
+app.get('/radio/stream/:id', (req, res) => {
+  const st = hub.byId[req.params.id];
+  if (!st) return res.status(404).end();
+  if (!st.ready && st.downUntil > Date.now()) return res.status(503).end();
+  clearTimeout(st.idleTimer);
+  res.on('error', () => {});
+  const attach = () => {
+    if (res.destroyed || res.writableEnded) return;
+    res.writeHead(200, { 'Content-Type': st.ctype, 'Cache-Control': 'no-store, no-transform', 'Connection': 'keep-alive',
+                         'X-Accel-Buffering': 'no', 'Access-Control-Allow-Origin': '*' });
+    if (st.recent.length) res.write(Buffer.concat(st.recent));   // tiny pre-roll so playback starts fast
+    st.clients.add(res);
+  };
+  const waiter = (ok) => { if (ok) attach(); else if (!res.headersSent) res.status(502).end(); };
+  req.on('close', () => {
+    st.clients.delete(res);
+    const k = st.waiters.indexOf(waiter); if (k >= 0) st.waiters.splice(k, 1);
+    if (!st.clients.size) scheduleIdleClose(st);
+  });
+  if (st.ready) attach(); else { st.waiters.push(waiter); startUpstream(st); }
+});
+// Handy for diagnosing: open https://<your-city-domain>/radio/stations
+app.get('/radio/stations', (req, res) => {
+  res.json(hub.list.map(s => ({ id: s.id, name: s.name, kind: s.kind, url: s.url, live: s.ready, listeners: s.clients.size, down: s.downUntil > Date.now() })));
+});
+
+async function rbSearch(query) {
+  for (const base of RB_MIRRORS) {
+    try {
+      const r = await fetch(`${base}/json/stations/search?${query}&hidebroken=true&order=clickcount&reverse=true&limit=80`,
+        { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(8000) });
+      if (r.ok) { const j = await r.json(); if (Array.isArray(j)) return j; }
+    } catch (e) { /* try the next mirror */ }
+  }
+  return [];
+}
+async function refreshStations() {
+  const found = [];
+  const add = (name, url, kind) => {
+    const id = stationId(url), nm = String(name).trim().toLowerCase();
+    if (found.some(s => s.id === id || s.name.toLowerCase() === nm)) return;
+    found.push(makeStation(name, url, kind));
+  };
+  try { // 1) your own list always comes first
+    const arr = JSON.parse(fs.readFileSync(path.join(__dirname, 'stations.json'), 'utf8'));
+    (Array.isArray(arr) ? arr : []).forEach(s => { if (s && /^https?:\/\//i.test(s.url || '')) add(s.name || 'Radio', s.url, s.kind || 'custom'); });
+  } catch (e) { if (e.code !== 'ENOENT') console.warn('[radio] stations.json:', e.message); }
+  // 2) auto-discover working Malayalam streams
+  const pool = [];
+  for (const q of ['language=malayalam', 'tag=malayalam', 'name=malayalam']) pool.push(...await rbSearch(q));
+  const seen = new Set();
+  const cands = pool.filter(s => {
+    const url = s.url_resolved || s.url;
+    if (!url || !/^https?:\/\//i.test(url) || s.hls === 1 || /\.(m3u8?|pls)(\?|$)/i.test(url)) return false;
+    if (s.lastcheckok !== 1 || seen.has(url)) return false;
+    if (s.codec && !/mp3|aac|mpeg|ogg|unknown/i.test(s.codec)) return false;
+    seen.add(url); return true;
+  });
+  cands.sort((a, b) => (OLD_RE.test(b.name) - OLD_RE.test(a.name)) || ((b.clickcount || 0) - (a.clickcount || 0)));
+  cands.slice(0, 10).forEach(s => add(s.name || 'Malayalam FM', s.url_resolved || s.url, OLD_RE.test(s.name) ? 'old songs' : 'fm'));
+  // 3) last resort so the radio is never empty
+  if (!found.length) add('Radio Mango 91.9 (fallback)', 'https://stream.radiomango.fm/live', 'fm');
+
+  const next = found.map(s => hub.byId[s.id] || s);
+  const curId = hub.list[radio.station] && hub.list[radio.station].id;
+  const changed = next.map(s => s.id).join() !== hub.list.map(s => s.id).join();
+  hub.list.filter(s => !next.includes(s)).forEach(s => { s.clients.forEach(c => c.end()); if (s.up) s.up.destroy(); });
+  hub.list = next; hub.byId = Object.fromEntries(next.map(s => [s.id, s]));
+  const k = next.findIndex(s => s.id === curId); radio.station = k >= 0 ? k : 0;
+  console.log(`[radio] ${next.length} station(s): ` + next.map(s => s.name).join(' | '));
+  if (changed) io.emit('radioState', radioPayload());
+}
+refreshStations().catch(e => console.error('[radio] refresh failed:', e.message));
+setInterval(() => refreshStations().catch(() => {}), 6 * 60 * 60 * 1000);
 const ITEMS_BY_ID = Object.fromEntries(ITEMS.map(i => [i.id, i]));
 const FLOWER_IDS = ITEMS.filter(i => i.category === 'flower').map(i => i.id);
 
@@ -225,7 +430,7 @@ io.on('connection', (socket) => {
     socket.emit('currentCars', occupiedCars); // let the newcomer know which cars are already taken
     socket.emit('deliveryUpdated', deliveryJob);
     socket.emit('shopCatalog', ITEMS);
-    socket.emit('radioState', radio);
+    socket.emit('radioState', radioPayload());
     socket.emit('treasureSpots', treasureSpots.filter(t => !claimedTreasures.has(t.id)));
     socket.broadcast.emit('playerJoined', players[socket.id]);
   });
@@ -282,7 +487,7 @@ io.on('connection', (socket) => {
     const p = players[socket.id];
     const item = ITEMS.find(i => i.id === itemId);
     if (!p || !item) return;
-    const counter = item.shop === 'tea' ? TEA_POS : SHOP_POS;
+    const counter = item.shop === 'tea' ? TEA_POS : item.shop === 'milk' ? MILK_POS : SHOP_POS;
     if (Math.hypot(p.x - counter.x, p.z - counter.z) > SHOP_RANGE) { socket.emit('purchaseDenied', { itemId, reason: 'far' }); return; }
     if (p.balloons < item.price) { socket.emit('purchaseDenied', { itemId, reason: 'insufficient' }); return; }
     p.balloons -= item.price;
@@ -386,11 +591,35 @@ io.on('connection', (socket) => {
     if (!p) return;
     if (Math.hypot(p.x - RADIO_POS.x, p.z - RADIO_POS.z) > RADIO_RANGE) return;
     const now = Date.now();
-    if (p.lastRadio && now - p.lastRadio < 600) return; // light throttle
+    if (p.lastRadio && now - p.lastRadio < 500) return; // light throttle
     p.lastRadio = now;
-    const st = Number.isInteger(station) && station >= 0 && station < 32 ? station : radio.station;
+    const n = hub.list.length;
+    const st = Number.isInteger(station) && station >= 0 && station < n ? station : radio.station;
     radio = { on: !!on, station: st };
-    io.emit('radioState', { ...radio, by: p.name });
+    io.emit('radioState', { ...radioPayload(), by: p.name });
+  });
+
+  // A listener's browser could not play the current station several times in a row: skip it.
+  socket.on('radioFail', ({ station } = {}) => {
+    const p = players[socket.id];
+    if (!p) return;
+    const now = Date.now();
+    if (p.lastFail && now - p.lastFail < 10000) return;
+    p.lastFail = now;
+    const st = hub.list[radio.station];
+    if (!st || Number(station) !== radio.station) return;
+    st.downUntil = now + 2 * 60 * 1000;
+    hubStationDown(st);
+  });
+
+  // The kaalavandi driver calls the oxen: everyone nearby hears the moo
+  socket.on('cartCall', ({ carId } = {}) => {
+    const p = players[socket.id];
+    if (!p || typeof carId !== 'string' || !carId.startsWith('cart_') || p.drivingCarId !== carId) return;
+    const now = Date.now();
+    if (p.lastCall && now - p.lastCall < 1500) return;
+    p.lastCall = now;
+    io.emit('cartCall', { carId });
   });
 
   socket.on('chatMessage', (text) => {
