@@ -47,22 +47,25 @@
     max-width:180px; text-align:right; pointer-events:none;
   }
 
-  #voice-btn{
-    position:absolute; top:64px; left:14px; z-index:5;
-    background:var(--card); color:var(--text); border:1px solid var(--border);
-    border-radius:24px; padding:9px 16px; font-weight:700; font-size:.82em; cursor:pointer;
+  #mic-btn, #sound-btn{
+    position:absolute; top:64px; z-index:5; width:44px; height:44px; padding:0;
+    display:flex; align-items:center; justify-content:center; font-size:1.05em;
+    background:var(--card); color:var(--muted); border:1px solid var(--border); border-radius:50%; cursor:pointer;
   }
-  #voice-btn.on{ background:linear-gradient(135deg,#FE019A,#9b5de5); color:#fff; border-color:transparent; }
+  #mic-btn{ left:14px; } #sound-btn{ left:66px; }
+  #mic-btn.on{ background:linear-gradient(135deg,#FE019A,#9b5de5); color:#fff; border-color:transparent; }
+  #sound-btn.on{ background:linear-gradient(135deg,#00b37a,#00f593); color:#05210f; border-color:transparent; }
+  .rbtn{ background:#5b3416; color:#ffd166; border:1px solid #c98a3a; border-radius:20px; padding:10px 16px; font-weight:700; font-size:.82em; cursor:pointer; }
 
   #map-btn, #stats-btn, #shop-btn, #inventory-btn{
     position:absolute; top:64px; z-index:5;
     background:var(--card); color:var(--text); border:1px solid var(--border);
     border-radius:24px; padding:9px 16px; font-weight:700; font-size:.82em; cursor:pointer;
   }
-  #map-btn{ left:110px; }
-  #stats-btn{ left:196px; }
-  #shop-btn{ left:282px; }
-  #inventory-btn{ left:368px; }
+  #map-btn{ left:118px; }
+  #stats-btn{ left:204px; }
+  #shop-btn{ left:290px; }
+  #inventory-btn{ left:376px; }
 
   /* --- Shop / Inventory panels (reuse the map/stats overlay look) --- */
   #shop-overlay, #inventory-overlay{
@@ -259,7 +262,8 @@
     #chat-toggle{ display:flex; }
     #controls-hint{ display:none; }
     #joystick-zone{ display:block; }
-    #voice-btn{ top:64px; left:auto; right:14px; }
+    #mic-btn{ top:64px; left:auto; right:14px; }
+    #sound-btn{ top:64px; left:auto; right:66px; }
     #map-btn{ top:110px; left:auto; right:14px; }
     #stats-btn{ top:156px; left:auto; right:14px; }
     #shop-btn{ top:202px; left:auto; right:14px; }
@@ -314,7 +318,8 @@
   </div>
 </div>
 
-<button id="voice-btn"><i class="fa-solid fa-microphone"></i> Voice</button>
+<button id="mic-btn" title="Microphone (off)"><i class="fa-solid fa-microphone-slash"></i></button>
+<button id="sound-btn" title="Sound (off)"><i class="fa-solid fa-volume-xmark"></i></button>
 <button id="map-btn"><i class="fa-solid fa-map"></i> Map</button>
 <button id="stats-btn"><i class="fa-solid fa-user"></i> Stats</button>
 <button id="shop-btn"><i class="fa-solid fa-store"></i> Shop</button>
@@ -389,10 +394,12 @@
 </div>
 <button id="vehicle-prompt" style="display:none; position:absolute; left:50%; bottom:100px; transform:translateX(-50%); z-index:6; background:rgba(20,15,10,.85); color:#fff; padding:10px 20px; border:none; border-radius:20px; font-weight:700; font-size:.85em; cursor:pointer;">Press E to enter</button>
 
-<div id="radio-ui" style="display:none; position:absolute; left:50%; bottom:200px; transform:translateX(-50%); z-index:6; gap:8px;">
-  <button id="radio-toggle" style="background:#5b3416; color:#ffd166; border:1px solid #c98a3a; border-radius:20px; padding:10px 18px; font-weight:700; font-size:.82em; cursor:pointer;">📻 Radio</button>
-  <button id="radio-next" style="background:#5b3416; color:#ffd166; border:1px solid #c98a3a; border-radius:20px; padding:10px 18px; font-weight:700; font-size:.82em; cursor:pointer;">⏭ Next (N)</button>
+<div id="radio-ui" style="display:none; position:absolute; left:50%; bottom:200px; transform:translateX(-50%); z-index:6; gap:6px;">
+  <button id="radio-prev" class="rbtn">⏮ Prev (P)</button>
+  <button id="radio-toggle" class="rbtn">📻 Radio</button>
+  <button id="radio-next" class="rbtn">Next (N) ⏭</button>
 </div>
+<button id="cart-call" class="rbtn" style="display:none; position:absolute; right:16px; bottom:150px; z-index:6;">🐂 Moo (H)</button>
 <div id="radio-chip" style="display:none; position:absolute; top:140px; left:50%; transform:translateX(-50%); z-index:6; background:rgba(60,35,12,.88); color:#ffd166; padding:6px 14px; border-radius:16px; font-weight:700; font-size:.78em; pointer-events:none;"></div>
 
 <div id="joystick-zone">
@@ -707,7 +714,7 @@ for (let gx = -GRID/2; gx < GRID/2; gx++) {
     scene.add(curb);
 
     // Block (-1,0) is the chayakkada, built separately below; every other block gets a Kerala house.
-    if (!(gx === -1 && gz === 0)) addKeralaHouse(cx, cz, footprint);
+    if (!(gx === -1 && (gz === 0 || gz === -1))) addKeralaHouse(cx, cz, footprint);
     // coconut palms on two random corners, plus a mango-type tree or banana clump on a third
     {
       const e = footprint/2 - 1.3, cs = [[-1,-1],[1,-1],[-1,1],[1,1]].sort(() => Math.random() - 0.5);
@@ -893,11 +900,6 @@ addPlane(-35, -76, 0);
 const TEA_POS = { x: -10, z: 8 }, TEA_RANGE = 6;       // customer spot at the chayakkada counter
 const RADIO_POS = { x: -12.8, z: 9.7 };                 // the old valve radio on the counter
 const RADIO_CTRL_RANGE = 6, RADIO_HEAR_RANGE = 26;
-// Shared radio playlist — everyone hears the same live stream. Add more live Malayalam FM / old-song
-// stream URLs here (https, direct mp3/aac) and press N at the radio to cycle.
-const STATIONS = [
-  { name: 'Radio Mango 91.9', url: 'https://stream.radiomango.fm/live' },
-];
 const teaFx = { steam: [], dial: null, note: null };
 
 function steamTexture() {
@@ -1063,13 +1065,204 @@ function buildPalms() {
 }
 buildPalms();
 
-/* ---- Shared old radio: server holds on/off + station; every player hears the same live stream,
-   louder the closer they are to the chayakkada. ---- */
-let radioState = { on: true, station: 0 };
+/* =========================================================
+   COWSHED (പശുത്തൊഴുത്ത്) + milk stall, SOUND ENGINE, ANIMALS, shared RADIO
+   ========================================================= */
+const MILK_POS = { x: -6, z: -5 };   // Karavakkari chechi's milk stall
+const SHOPS = {
+  tea:  { x: TEA_POS.x,  z: TEA_POS.z,  range: TEA_RANGE, title: '🍵 ചായക്കട — Chayakkada', prompt: '🍵 Press B for chaya & palaharam' },
+  milk: { x: MILK_POS.x, z: MILK_POS.z, range: 6,         title: '🥛 പാൽ — Milk stall',      prompt: '🥛 Press B for palu, thairu & nei' },
+  main: { x: SHOP_POS.x, z: SHOP_POS.z, range: 7,         title: '🛒 Shop',                 prompt: '🛒 Press B or tap to shop' },
+};
+let milkmaid = null;
+
+(function buildCowshed() {
+  const cx = -10, y0 = 0.25, wood = 0x7a4c22, thatch = kMat(0xc2a060, { side: THREE.DoubleSide });
+  const box = (w, h, d, c, x, y, z) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), kMat(c)); m.position.set(x, y, z); scene.add(m); return m; };
+  [[-14, -15], [-6, -15], [-14, -11], [-6, -11]].forEach(([x, z]) => box(0.22, 3, 0.22, wood, x, y0 + 1.5, z));
+  box(8.2, 2.6, 0.15, 0x9a6a3a, cx, y0 + 1.3, -15);                       // back wall
+  const r1 = box(9.6, 0.14, 2.45, 0xc2a060, cx, y0 + 3.45, -12.0); r1.rotation.x = 0.42;
+  const r2 = box(9.6, 0.14, 2.45, 0xc2a060, cx, y0 + 3.45, -14.0); r2.rotation.x = -0.42;
+  box(9.6, 0.12, 0.18, 0x8a6a30, cx, y0 + 3.92, -13.0);                    // ridge
+  box(8.4, 0.15, 0.15, wood, cx, y0 + 2.9, -11);                           // front beam
+  const sg = new THREE.Mesh(new THREE.PlaneGeometry(3.8, 0.85), new THREE.MeshBasicMaterial({ map: makeSignTex('പശുത്തൊഴുത്ത്', '#3a5a2a', '#fff2cc') }));
+  sg.position.set(cx, y0 + 2.4, -10.9); scene.add(sg);
+  box(2.2, 0.7, 1.1, 0xe3c25a, -12, y0 + 0.35, -13.6);                     // hay
+  box(2.6, 0.35, 0.6, wood, -8, y0 + 0.3, -13.7);                          // trough
+  // milk stall: table, steel pots, signboard
+  box(2.6, 0.9, 0.8, wood, MILK_POS.x, y0 + 0.45, -4.4);
+  box(2.8, 0.08, 0.95, 0xa9743a, MILK_POS.x, y0 + 0.94, -4.4);
+  const steel = kMat(0xc9ced6, { metalness: 0.6, roughness: 0.3 });
+  [-0.8, 0, 0.8].forEach(dx => { const m = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.17, 0.34, 12), steel); m.position.set(MILK_POS.x + dx, y0 + 1.15, -4.4); scene.add(m); });
+  [-1.2, 1.2].forEach(dx => box(0.1, 2.6, 0.1, wood, MILK_POS.x + dx, y0 + 1.3, -4.0));
+  const ms = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 0.6), new THREE.MeshBasicMaterial({ map: makeSignTex('പാൽ · തൈര് · മോര്', '#ffffff', '#1d4f8a') }));
+  ms.position.set(MILK_POS.x, y0 + 2.35, -3.93); scene.add(ms);
+})();
+
+/* ---- Sound engine (WebAudio, synthesised — no audio files). Everything stays silent until the Sound button is on. ---- */
+let soundOn = false, actx = null, master = null;
+function ensureAudio() {
+  if (!actx) {
+    const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return false;
+    actx = new AC(); master = actx.createGain(); master.gain.value = 0.9; master.connect(actx.destination);
+  }
+  if (actx.state === 'suspended') actx.resume();
+  return true;
+}
+function envGain(t0, attack, hold, release, peak) {
+  const g = actx.createGain(), pk = Math.max(0.0002, peak);
+  g.gain.setValueAtTime(0.0001, t0);
+  g.gain.exponentialRampToValueAtTime(pk, t0 + attack);
+  g.gain.setValueAtTime(pk, t0 + attack + hold);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + attack + hold + release);
+  return g;
+}
+// One synthesised "voice": a pitch glide through f[], shaped by band-pass formants [centre, Q, gain, sweepTo?].
+function vox({ type = 'sawtooth', f = [200, 200], dur = 1, vol = 0.3, formants = [[500, 5]], vib = [0, 0], at = 0.06, t0 = 0 }) {
+  if (!actx || !soundOn || vol < 0.003) return;
+  const t = actx.currentTime + t0, o = actx.createOscillator(); o.type = type;
+  o.frequency.setValueAtTime(f[0], t);
+  for (let i = 1; i < f.length; i++) o.frequency.linearRampToValueAtTime(f[i], t + dur * i / (f.length - 1));
+  if (vib[0]) { const l = actx.createOscillator(), lg = actx.createGain(); l.frequency.value = vib[0]; lg.gain.value = vib[1]; l.connect(lg); lg.connect(o.frequency); l.start(t); l.stop(t + dur + 0.2); }
+  const out = envGain(t, at, Math.max(0.01, dur - at - 0.15), 0.15, vol);
+  formants.forEach(([fc, q, gain = 1, sweep]) => {
+    const b = actx.createBiquadFilter(), gg = actx.createGain();
+    b.type = 'bandpass'; b.frequency.setValueAtTime(fc, t); b.Q.value = q; gg.gain.value = gain;
+    if (sweep) { b.frequency.linearRampToValueAtTime(sweep, t + dur * 0.5); b.frequency.linearRampToValueAtTime(fc, t + dur); }
+    o.connect(b); b.connect(gg); gg.connect(out);
+  });
+  out.connect(master); o.start(t); o.stop(t + dur + 0.25);
+}
+const SND = {
+  moo(v, p = 1)  { vox({ f: [105*p, 150*p, 135*p, 80*p], dur: 1.7, vol: 0.6*v, formants: [[300, 4, 1, 650], [800, 6, 0.6, 1100]], vib: [5, 4], at: 0.12 }); },
+  ox(v)          { SND.moo(v, 0.72); },                       // the kaalas: deeper than a cow
+  goat(v)        { vox({ f: [430, 480, 400], dur: 0.85, vol: 0.45*v, formants: [[1200, 4], [2200, 6, 0.6]], vib: [26, 40], at: 0.03 }); },
+  hen(v)         { for (let i = 0; i < 4; i++) vox({ f: [340, 250], dur: 0.11, vol: 0.28*v, formants: [[900, 3], [1800, 4, 0.5]], at: 0.01, t0: i*0.15 + Math.random()*0.03 }); },
+  rooster(v)     { [[0, 520, 0.16], [0.2, 520, 0.16], [0.4, 680, 0.22]].forEach(([d, fr, du]) => vox({ f: [fr, fr*1.08], dur: du, vol: 0.4*v, formants: [[1400, 4]], at: 0.02, t0: d }));
+                   vox({ f: [800, 950, 560], dur: 1.0, vol: 0.4*v, formants: [[1300, 4], [2400, 5, 0.5]], vib: [9, 25], at: 0.04, t0: 0.65 }); },
+  bell(v)        { if (!actx || !soundOn || v < 0.01) return; const t = actx.currentTime;
+                   [1150, 1725].forEach((fr, i) => { const o = actx.createOscillator(), g = envGain(t, 0.005, 0.01, 0.5, 0.14*v/(i + 1)); o.type = 'sine'; o.frequency.value = fr; o.connect(g); g.connect(master); o.start(t); o.stop(t + 0.6); }); },
+};
+function listenerPos() { return (drivingCarId && cars[drivingCarId]) ? cars[drivingCarId].group.position : myAvatar.position; }
+function earVol(x, z, range = 24) { const q = listenerPos(), d = Math.hypot(q.x - x, q.z - z); return Math.pow(Math.max(0, 1 - d / range), 1.5); }
+function oxCall(c) { const p = c.group.position, v = earVol(p.x, p.z, 34); if (v > 0.01) { SND.ox(v); setTimeout(() => SND.ox(v * 0.8), 450); } }
+
+/* ---- Animals: pashu (cow), aadu (goat), kozhi (hen/rooster). Positions are a pure function of the clock,
+   so every player sees them in the same place without any network traffic. ---- */
+const animals = [];
+const part = (g) => (geo, mat, x, y, z) => { const o = new THREE.Mesh(geo, mat); o.position.set(x, y, z); g.add(o); return o; };
+const cowLeg = new THREE.CylinderGeometry(0.08, 0.06, 0.6, 6); cowLeg.translate(0, -0.3, 0);
+const goatLeg = new THREE.CylinderGeometry(0.04, 0.03, 0.38, 5); goatLeg.translate(0, -0.19, 0);
+const henLeg = new THREE.CylinderGeometry(0.012, 0.012, 0.16, 4); henLeg.translate(0, -0.08, 0);
+
+function makeCow(coat, patch) {
+  const g = new THREE.Group(), legs = [], a = part(g);
+  const m = kMat(coat), pm = kMat(patch), dk = kMat(0x2b1d14), pk = kMat(0xe9a8a0), hn = kMat(0xeeeeee);
+  a(new THREE.BoxGeometry(1.5, 0.72, 0.62), m, 0, 0.95, 0);
+  a(new THREE.BoxGeometry(0.55, 0.74, 0.64), pm, -0.3, 0.96, 0);
+  a(new THREE.SphereGeometry(0.25, 8, 6), m, 0.42, 1.35, 0);                    // hump
+  a(new THREE.BoxGeometry(0.46, 0.4, 0.4), m, 0.98, 1.1, 0);                    // head
+  a(new THREE.BoxGeometry(0.2, 0.26, 0.34), pk, 1.25, 1.02, 0);                 // muzzle
+  [-1, 1].forEach(s => {
+    a(new THREE.ConeGeometry(0.05, 0.3, 5), hn, 0.92, 1.38, s*0.2).rotation.x = s*0.5;   // horns
+    a(new THREE.BoxGeometry(0.18, 0.06, 0.12), pm, 0.88, 1.24, s*0.27);                  // ears
+    a(new THREE.SphereGeometry(0.03, 5, 5), dk, 1.17, 1.18, s*0.14);                     // eyes
+  });
+  a(new THREE.CylinderGeometry(0.025, 0.02, 0.75, 5), m, -0.78, 0.95, 0).rotation.z = 0.25;
+  a(new THREE.SphereGeometry(0.1, 6, 6), dk, -0.85, 0.55, 0);
+  a(new THREE.SphereGeometry(0.17, 8, 6), pk, -0.45, 0.58, 0);                  // udder
+  [[0.5, 0.22], [0.5, -0.22], [-0.5, 0.22], [-0.5, -0.22]].forEach(([x, z]) => legs.push(a(cowLeg, m, x, 0.6, z)));
+  g.userData = { legs, kind: 'cow' }; return g;
+}
+function makeGoat(coat) {
+  const g = new THREE.Group(), legs = [], a = part(g);
+  const m = kMat(coat), dk = kMat(0x2b1d14), hn = kMat(0xd9d2b8);
+  a(new THREE.BoxGeometry(0.85, 0.36, 0.3), m, 0, 0.58, 0);
+  a(new THREE.BoxGeometry(0.22, 0.22, 0.2), m, 0.52, 0.8, 0);
+  a(new THREE.BoxGeometry(0.12, 0.14, 0.14), dk, 0.64, 0.74, 0);
+  a(new THREE.ConeGeometry(0.03, 0.14, 5), m, 0.62, 0.62, 0).rotation.z = Math.PI;      // beard
+  a(new THREE.CylinderGeometry(0.1, 0.1, 0.1, 6), m, 0.3, 0.68, 0).rotation.z = 0.9;     // neck
+  [-1, 1].forEach(s => {
+    a(new THREE.ConeGeometry(0.025, 0.22, 5), hn, 0.46, 0.95, s*0.06).rotation.z = 0.7;
+    a(new THREE.BoxGeometry(0.12, 0.04, 0.12), m, 0.45, 0.82, s*0.15);
+    a(new THREE.SphereGeometry(0.02, 5, 5), dk, 0.62, 0.84, s*0.08);
+  });
+  a(new THREE.ConeGeometry(0.04, 0.2, 5), m, -0.44, 0.74, 0).rotation.z = 0.5;
+  [[0.3, 0.1], [0.3, -0.1], [-0.3, 0.1], [-0.3, -0.1]].forEach(([x, z]) => legs.push(a(goatLeg, m, x, 0.4, z)));
+  g.userData = { legs, kind: 'goat' }; return g;
+}
+function makeHen(body, tailC, big) {
+  const g = new THREE.Group(), up = new THREE.Group(), legs = [], a = part(up), b = part(g);
+  up.position.y = 0.28; g.add(up);
+  const m = kMat(body), red = kMat(0xd62828), tl = kMat(tailC), yl = kMat(0xe9b23a);
+  a(new THREE.SphereGeometry(0.2, 8, 6), m, 0, 0, 0).scale.set(1.15, 0.85, 0.8);
+  a(new THREE.SphereGeometry(0.075, 6, 6), m, 0.2, 0.17, 0);
+  a(new THREE.BoxGeometry(0.03, big ? 0.09 : 0.06, 0.02), red, 0.2, 0.26, 0);              // comb
+  a(new THREE.SphereGeometry(0.025, 5, 5), red, 0.26, 0.1, 0);                              // wattle
+  a(new THREE.ConeGeometry(0.025, 0.08, 5), yl, 0.29, 0.16, 0).rotation.z = -Math.PI/2;    // beak
+  a(new THREE.ConeGeometry(0.07, 0.32, 5), tl, -0.24, 0.14, 0).rotation.z = 0.9;           // tail
+  if (big) a(new THREE.ConeGeometry(0.05, 0.4, 5), kMat(0x1f6b3a), -0.28, 0.2, 0).rotation.z = 0.6;
+  [-1, 1].forEach(s => { a(new THREE.SphereGeometry(0.1, 6, 5), m, -0.02, 0.02, s*0.14).scale.set(1.2, 0.6, 0.3); legs.push(b(henLeg, yl, 0, 0.17, s*0.06)); });
+  if (big) g.scale.setScalar(1.35);
+  g.userData = { legs, up, kind: big ? 'rooster' : 'hen' }; return g;
+}
+function addAnimal(g, hx, hz, ax, az, w) {
+  const seed = animals.length + 1;
+  g.position.set(hx, 0.26, hz); scene.add(g);
+  animals.push({ g, seed, hx, hz, ax, az, w, p1: seed*1.7, p2: seed*2.9, p3: seed*0.7, p4: seed*4.1, kind: g.userData.kind, lastIdx: null });
+}
+// pashu — cows around the cowshed; aadu — goats; kozhi — hens in the yard + cowshed block, one rooster
+addAnimal(makeCow(0xf3ebdd, 0x8a5a3a), -10, -8.4, 2.4, 1.2, 0.07);
+addAnimal(makeCow(0x8a5a3a, 0xf3ebdd), -11, -8.0, 2.2, 1.1, 0.06);
+addAnimal(makeGoat(0xf3ebdd), -12, -5.6, 1.8, 1.0, 0.12);
+addAnimal(makeGoat(0x6b4a2e), -8.5, -6.4, 1.6, 1.0, 0.13);
+addAnimal(makeGoat(0x222222), -10, -7.0, 1.8, 0.9, 0.11);
+addAnimal(makeGoat(0xf3ebdd), 62.8, -20, 0.9, 6.0, 0.11);
+addAnimal(makeGoat(0x8a5a3a), 62.8, -14, 0.9, 5.0, 0.12);
+[0xc0392b, 0xf0e6d0, 0x8a5a3a, 0x2b2b2b].forEach((c, i) => addAnimal(makeHen(c, 0x3a2a1a, false), -10 + i - 1.5, 6, 3.2, 1.4, 0.2 + i*0.02));
+[0xe6d8c0, 0xb5651d, 0x333333].forEach((c, i) => addAnimal(makeHen(c, 0x3a2a1a, false), -9 + i*2, -6.2, 3.5, 1.4, 0.21 + i*0.02));
+addAnimal(makeHen(0xa8451d, 0x1f6b3a, true), -13, -6, 1.5, 1.2, 0.2);       // rooster
+
+const ANIMAL_SND = { cow: [26, 55, SND.moo], goat: [19, 55, SND.goat], hen: [11, 50, SND.hen], rooster: [47, 60, SND.rooster] };
+function animalPos(a, t) {
+  return { x: a.hx + a.ax*Math.sin(a.w*t + a.p1) + 0.4*a.ax*Math.sin(2.7*a.w*t + a.p2),
+           z: a.hz + a.az*Math.sin(1.3*a.w*t + a.p3) + 0.4*a.az*Math.cos(2.1*a.w*t + a.p4) };
+}
+function animalsTick() {
+  const now = Date.now() / 1000;
+  animals.forEach(a => {
+    const p = animalPos(a, now), q = animalPos(a, now + 0.25);
+    a.g.position.x = p.x; a.g.position.z = p.z;
+    const vx = q.x - p.x, vz = q.z - p.z, sp = Math.hypot(vx, vz) / 0.25;
+    if (sp > 0.03) a.g.rotation.y = Math.atan2(-vz, vx);
+    const amp = Math.min(0.5, sp * 1.6), ph = now * (3 + sp * 5);
+    a.g.userData.legs.forEach((l, i) => { l.rotation.z = Math.sin(ph + (i % 2 ? Math.PI : 0)) * amp; });
+    if (a.g.userData.up) a.g.userData.up.rotation.z = -Math.max(0, Math.sin(now * 3 + a.seed)) * 0.55 * (sp < 0.5 ? 1 : 0.3);   // pecking
+    const cfg = ANIMAL_SND[a.kind], idx = Math.floor((now + a.seed * 3.7) / cfg[0]);
+    if (a.lastIdx === null) a.lastIdx = idx;
+    else if (idx !== a.lastIdx) {
+      a.lastIdx = idx;
+      if (soundOn && ((idx * 2654435761 + a.seed * 97) >>> 0) % 100 < cfg[1]) { const v = earVol(p.x, p.z, 26); if (v > 0.02) cfg[2](v); }
+    }
+  });
+}
+
+/* ---- Shared old radio: the server relays one live stream per station, so everyone hears the same broadcast,
+   louder the closer they are to the chayakkada, and only while Sound is on. ---- */
+let radioState = { on: true, station: 0, stations: [] };
 const radioAudio = new Audio(); radioAudio.preload = 'none';
-let radioLoaded = -1, radioTrying = false, radioRetryAt = 0, radioTapHint = false;
-radioAudio.addEventListener('error', () => { if (radioLoaded !== -1) { radioRetryAt = Date.now() + 12000; showToast('📻 Radio signal lost — retrying shortly'); } });
-document.addEventListener('click', () => { if (radioLoaded !== -1 && radioAudio.paused) radioAudio.play().catch(() => {}); });
+let radioLoaded = -1, radioStatus = 'idle', radioRetryAt = 0, radioErrs = [], radioPlaying = false;
+radioAudio.addEventListener('playing', () => { radioStatus = 'live'; });
+radioAudio.addEventListener('waiting', () => { if (radioLoaded !== -1) radioStatus = 'connecting'; });
+radioAudio.addEventListener('error', () => {
+  if (radioLoaded === -1) return;
+  const bad = radioLoaded, now = Date.now();
+  radioStatus = 'nosignal'; radioRetryAt = now + 5000;
+  radioErrs = radioErrs.filter(t => now - t < 30000); radioErrs.push(now);
+  if (radioErrs.length >= 3) { socket.emit('radioFail', { station: bad }); radioErrs = []; }
+  radioAudio.removeAttribute('src'); radioAudio.load(); radioLoaded = -1;
+});
+document.addEventListener('click', () => { if (soundOn && radioLoaded !== -1 && radioAudio.paused) radioAudio.play().catch(() => {}); });
 
 function radioDistance() {
   const p = (drivingCarId && cars[drivingCarId]) ? cars[drivingCarId].group.position : myAvatar.position;
@@ -1077,23 +1270,30 @@ function radioDistance() {
 }
 function radioNear() { return document.getElementById('name-gate').style.display === 'none' && !drivingCarId && radioDistance() < RADIO_CTRL_RANGE; }
 function radioToggle() { if (radioNear()) socket.emit('radioSet', { on: !radioState.on, station: radioState.station }); }
-function radioNext()   { if (radioNear()) socket.emit('radioSet', { on: true, station: (radioState.station + 1) % STATIONS.length }); }
+function radioStep(dir) {
+  const n = (radioState.stations || []).length; if (!radioNear() || n < 2) return;
+  socket.emit('radioSet', { on: true, station: (radioState.station + dir + n) % n });
+}
 document.getElementById('radio-toggle').onclick = radioToggle;
-document.getElementById('radio-next').onclick = radioNext;
+document.getElementById('radio-next').onclick = () => radioStep(1);
+document.getElementById('radio-prev').onclick = () => radioStep(-1);
+function cartCall() { if (drivingCarId && cars[drivingCarId] && cars[drivingCarId].isCart) socket.emit('cartCall', { carId: drivingCarId }); }
+document.getElementById('cart-call').onclick = cartCall;
 addEventListener('keydown', e => {
   if (/INPUT|TEXTAREA/.test((e.target.tagName || ''))) return;
   const k = e.key.toLowerCase();
-  if (k === 'r') radioToggle(); else if (k === 'n') radioNext();
+  if (k === 'r') radioToggle(); else if (k === 'n') radioStep(1); else if (k === 'p') radioStep(-1); else if (k === 'h') cartCall();
 });
 
 function keralaTick(t) {
+  const nowMs = Date.now(), nowS = nowMs / 1000;
   // samavar steam
   teaFx.steam.forEach(s => {
     const p = (t*0.25 + s.phase) % 1;
     s.sp.position.set(Math.sin(p*6 + s.phase*5)*0.12, 1.7 + p*1.6, 0);
     s.sp.scale.setScalar(0.35 + p*0.7); s.sp.material.opacity = (1 - p) * 0.55;
   });
-  // bullock cart: oxen walk + wheels turn with actual movement
+  // bullock carts: oxen walk, wheels turn, bell rings and the kaalas moo while moving
   Object.values(cars).forEach(c => {
     if (!c.isCart) return;
     const p = c.group.position, sp = typeof c.lx === 'number' ? Math.hypot(p.x - c.lx, p.z - c.lz) : 0;
@@ -1101,35 +1301,50 @@ function keralaTick(t) {
     const amp = Math.min(0.5, sp*10);
     c.group.userData.legs.forEach((l, i) => { l.rotation.z = Math.sin(c.ph + (i % 2 ? Math.PI : 0)) * amp; });
     c.group.userData.wheels.forEach(w => { w.rotation.z -= sp/0.55; });
+    if (soundOn && sp > 0.015) {
+      const v = earVol(p.x, p.z, 30);
+      if (v > 0.02) {
+        if (nowMs > (c.nextBell || 0)) { SND.bell(v); c.nextBell = nowMs + 650; }
+        if (nowMs > (c.nextMoo || 0))  { oxCall(c); c.nextMoo = nowMs + 8000 + Math.random()*7000; }
+      }
+    }
   });
-  // radio
+  animalsTick();
+  if (milkmaid) { milkmaid.rotation.z = Math.sin(t*1.2)*0.03; milkmaid.rotation.x = Math.sin(t*3)*0.03; }
+  // radio dial + note
   teaFx.dial.emissiveIntensity = radioState.on ? 0.7 + 0.25*Math.sin(t*5) : 0;
   teaFx.note.visible = radioState.on; teaFx.note.position.y = 1.0 + Math.sin(t*2.5)*0.08;
+  // radio audio
   const gate = document.getElementById('name-gate').style.display !== 'none';
-  const d = radioDistance();
-  const vol = (!gate && radioState.on) ? Math.max(0, Math.min(1, 1 - (d - 3) / (RADIO_HEAR_RANGE - 3))) : 0;
-  const idx = radioState.station % STATIONS.length;
+  const d = radioDistance(), sts = radioState.stations || [];
+  const idx = sts.length ? radioState.station % sts.length : -1;
+  const prox = Math.max(0, Math.min(1, 1 - (d - 3) / (RADIO_HEAR_RANGE - 3)));
+  const vol = (soundOn && !gate && radioState.on && idx >= 0 && !sts[idx].down) ? prox : 0;
   if (vol > 0.03) {
-    if (radioLoaded !== idx) { radioAudio.src = STATIONS[idx].url; radioLoaded = idx; }
-    radioAudio.volume = Math.min(1, vol * 0.9);
-    if (radioAudio.paused && !radioTrying && Date.now() > radioRetryAt) {
-      radioTrying = true;
-      radioAudio.play().catch(() => { radioRetryAt = Date.now() + 4000; if (!radioTapHint) { radioTapHint = true; showToast('📻 Tap anywhere to start the radio'); } })
-        .then(() => setTimeout(() => { radioTrying = false; }, 800));
+    if (radioLoaded !== idx && nowMs > radioRetryAt) { radioAudio.src = '/radio/stream/' + sts[idx].id + '?s=' + nowMs; radioLoaded = idx; radioStatus = 'connecting'; }
+    if (radioLoaded === idx) {
+      radioAudio.volume = Math.min(1, vol * 0.9);
+      if (radioAudio.paused && !radioPlaying) { radioPlaying = true; radioAudio.play().catch(() => {}).then(() => setTimeout(() => { radioPlaying = false; }, 1500)); }
     }
-  } else if (radioLoaded !== -1) {           // out of earshot or switched off: drop the connection (rejoins live next time)
-    radioAudio.pause(); radioAudio.removeAttribute('src'); radioAudio.load(); radioLoaded = -1;
+  } else if (radioLoaded !== -1) {
+    radioAudio.pause(); radioAudio.removeAttribute('src'); radioAudio.load(); radioLoaded = -1; radioStatus = 'idle';
   }
   const chip = document.getElementById('radio-chip');
-  chip.style.display = vol > 0.05 ? 'block' : 'none';
-  if (vol > 0.05) chip.textContent = '📻 ' + STATIONS[idx].name + ' • live';
-  const ui = document.getElementById('radio-ui');
+  if (!gate && radioState.on && d < RADIO_HEAR_RANGE) {
+    const nm = idx >= 0 ? sts[idx].name : '';
+    chip.textContent = idx < 0 ? '📻 No stations yet…'
+      : sts[idx].down ? '📻 ' + nm + ' — off air, skipping…'
+      : !soundOn ? '📻 ' + nm + ' — 🔇 turn Sound on to listen'
+      : '📻 ' + nm + ' • ' + ({ live: 'live', connecting: 'connecting…', nosignal: 'no signal, retrying', idle: 'tuning…' }[radioStatus]);
+    chip.style.display = 'block';
+  } else chip.style.display = 'none';
   const near = !gate && !drivingCarId && d < RADIO_CTRL_RANGE;
-  ui.style.display = near ? 'flex' : 'none';
+  document.getElementById('radio-ui').style.display = near ? 'flex' : 'none';
   if (near) {
     document.getElementById('radio-toggle').textContent = radioState.on ? '📻 Turn off (R)' : '📻 Turn on (R)';
-    document.getElementById('radio-next').style.display = STATIONS.length > 1 ? '' : 'none';
+    document.getElementById('radio-next').style.display = document.getElementById('radio-prev').style.display = sts.length > 1 ? '' : 'none';
   }
+  document.getElementById('cart-call').style.display = (!gate && drivingCarId && cars[drivingCarId] && cars[drivingCarId].isCart) ? 'block' : 'none';
 }
 
 // Floating balloon pickups — matches the site's real currency, not generic cash
@@ -1350,6 +1565,38 @@ let myHairStyle = 'short';
   chaya.position.set(-10, 0.27, 10.8); chaya.rotation.y = Math.PI;
   chaya.add(makeLabel('Chayakkaran'));
   scene.add(chaya);
+  milkmaid = buildKaravakkari(); milkmaid.position.set(-6, 0.27, -5.5); scene.add(milkmaid);
+}
+
+// Karavakkari chechi (കറവക്കാരി, the milkmaid): kasavu-style blouse, long green pavada, davani, jasmine in her braid.
+function buildKaravakkari() {
+  const g = makeAvatarMesh('female', '#b3261e', 'short');
+  g.children.forEach(ch => { if (ch.geometry && ch.geometry.type === 'CylinderGeometry' && ch.geometry.parameters.radiusBottom === 0.36) ch.visible = false; });  // swap the short skirt for a pavada
+  const add = (geo, mat, x, y, z) => { const o = new THREE.Mesh(geo, mat); o.position.set(x, y, z); g.add(o); return o; };
+  const green = kMat(0x1e7a4a), gold = kMat(0xf2b632, { metalness: 0.4, roughness: 0.4 }), red = kMat(0xb3261e);
+  const white = kMat(0xffffff), yellow = kMat(0xf2c230), hair = kMat(0x1a1010), steel = kMat(0xc9ced6, { metalness: 0.6, roughness: 0.3 });
+  add(new THREE.CylinderGeometry(0.22, 0.46, 0.88, 16), green, 0, 0.46, 0);                              // pavada
+  add(new THREE.TorusGeometry(0.46, 0.03, 6, 20), gold, 0, 0.06, 0).rotation.x = Math.PI/2;              // gold hem
+  add(new THREE.TorusGeometry(0.4, 0.02, 6, 20), gold, 0, 0.2, 0).rotation.x = Math.PI/2;
+  [-1, 1].forEach(s => {
+    add(new THREE.CylinderGeometry(0.088, 0.088, 0.2, 8), red, s*0.27, 1.3, 0);                          // blouse sleeves
+    add(new THREE.TorusGeometry(0.07, 0.014, 6, 12), gold, s*0.285, 0.97, 0).rotation.x = Math.PI/2;     // bangles
+    add(new THREE.TorusGeometry(0.07, 0.014, 6, 12), gold, s*0.285, 1.0, 0).rotation.x = Math.PI/2;
+    add(new THREE.SphereGeometry(0.03, 6, 6), gold, s*0.265, 1.76, 0);                                    // earrings
+  });
+  add(new THREE.BoxGeometry(0.13, 0.9, 0.34), yellow, 0, 1.08, 0).rotation.z = 0.7;                       // davani across the shoulder
+  add(new THREE.SphereGeometry(0.025, 6, 6), red, 0, 1.83, 0.262);                                         // pottu
+  for (let i = 0; i < 7; i++) {                                                                           // long braid with jasmine
+    add(new THREE.SphereGeometry(0.055 - i*0.002, 6, 6), hair, 0, 1.72 - i*0.1, -0.27 - i*0.012);
+    add(new THREE.SphereGeometry(0.03, 6, 6), white, (i % 2 ? 0.045 : -0.045), 1.72 - i*0.1, -0.31 - i*0.012);
+  }
+  add(new THREE.SphereGeometry(0.04, 6, 6), red, 0, 1.0, -0.36);
+  for (let i = 0; i < 9; i++) { const a = -1.1 + i*0.275; add(new THREE.SphereGeometry(0.032, 6, 6), white, Math.sin(a)*0.265, 1.82, -Math.cos(a)*0.265); }
+  add(new THREE.CylinderGeometry(0.16, 0.13, 0.3, 12), steel, 0.55, 0.17, 0.35);                          // milk pail
+  add(new THREE.CylinderGeometry(0.15, 0.15, 0.01, 12), white, 0.55, 0.32, 0.35);
+  add(new THREE.CylinderGeometry(0.2, 0.2, 0.3, 8), kMat(0x7a4c22), -0.6, 0.15, 0.3);                     // stool
+  g.add(makeLabel('Karavakkari 🥛'));
+  return g;
 }
 let myAvatar = makeAvatarMesh(myGender, myOutfitColor, myHairStyle);
 scene.add(myAvatar);
@@ -1646,22 +1893,27 @@ function updateMovement() {
     vehiclePrompt.style.display = 'block';
   } else vehiclePrompt.style.display = 'none';
 
-  const atShop = nearShop(), atTea = nearTea();
-  shopPrompt.textContent = atTea ? '🍵 Press B for chaya & palaharam' : '🛒 Press B or tap to shop';
-  shopPrompt.style.display = (atShop || atTea) ? 'block' : 'none';
-  if (document.getElementById('shop-overlay').style.display !== 'none' && ((shopMode === 'tea' && !atTea) || (shopMode === 'main' && !atShop))) {
+  const here = nearShopMode();
+  shopPrompt.textContent = here ? SHOPS[here].prompt : '';
+  shopPrompt.style.display = here ? 'block' : 'none';
+  if (document.getElementById('shop-overlay').style.display !== 'none' && shopMode !== here) {
     document.getElementById('shop-overlay').style.display = 'none'; // walked away from the counter
   }
 }
 
 const shopPrompt = document.getElementById('shop-prompt');
 let shopMode = 'main';
-function nearTea() { return !drivingCarId && Math.hypot(myAvatar.position.x - TEA_POS.x, myAvatar.position.z - TEA_POS.z) < TEA_RANGE; }
+function nearShopMode() {
+  if (drivingCarId) return null;
+  const p = myAvatar.position;
+  for (const m of Object.keys(SHOPS)) if (Math.hypot(p.x - SHOPS[m].x, p.z - SHOPS[m].z) < SHOPS[m].range) return m;
+  return null;
+}
 function openShop() {
   if (document.getElementById('name-gate').style.display !== 'none') return;
-  if (nearTea()) shopMode = 'tea';
-  else if (nearShop()) shopMode = 'main';
-  else { showToast('🛒 Walk up to the Shop counter or the chayakkada to buy things'); return; }
+  const here = nearShopMode();
+  if (!here) { showToast('🛒 Walk up to the Shop, the chayakkada or the milk stall to buy things'); return; }
+  shopMode = here;
   renderShop();
   document.getElementById('shop-overlay').style.display = 'flex';
 }
@@ -1733,6 +1985,7 @@ function enterCity() {
   myAvatar = makeAvatarMesh(myGender, myOutfitColor, myHairStyle);
   scene.add(myAvatar);
   document.getElementById('name-gate').style.display = 'none';
+  setTimeout(() => showToast('🔇 Sound and 🎤 mic are OFF — tap the round icons at top-left to turn them on'), 800);
   socket.emit('join', { name: myName, gender: myGender, outfitColor: myOutfitColor, hairStyle: myHairStyle, uid: handoffUid || null, startingBalloons: handoffBalloons });
 }
 
@@ -1792,11 +2045,13 @@ socket.on('carFreed', ({ carId }) => {
 });
 socket.on('carDenied', () => { /* someone else got there first — no action needed */ });
 
-// --- Shared chayakkada radio ---
+// --- Shared chayakkada radio + cart calls ---
 socket.on('radioState', (s) => {
-  radioState = { on: !!s.on, station: s.station | 0 };
-  if (s.by) showToast(s.on ? `📻 ${s.by} tuned the radio` : `📻 ${s.by} switched the radio off`);
+  radioState = { on: !!s.on, station: s.station | 0, stations: Array.isArray(s.stations) ? s.stations : [] };
+  const n = radioState.stations[radioState.station];
+  if (s.by) showToast(s.on ? `📻 ${s.by} tuned ${n ? n.name : 'the radio'}` : `📻 ${s.by} switched the radio off`);
 });
+socket.on('cartCall', ({ carId }) => { const c = cars[carId]; if (c && c.isCart) oxCall(c); });
 
 // --- Delivery job updates ---
 const jobBanner = document.getElementById('job-banner');
@@ -1838,7 +2093,7 @@ let shopCatalog = [];
 let myInventory = {};
 const CATEGORY_LABELS = {
   weapon: '🔫 Guns & Weapons', flower: '🌹 Flowers', food: '🍔 Food', drink: '🥤 Drinks',
-  chayakkada: '🍵 Chaya & Palaharam', party: '🎉 Party', accessory: '🕶️ Accessories', clothing: '🧥 Clothing'
+  chayakkada: '🍵 Chaya & Palaharam', dairy: '🥛 Palu, Thairu & Nei', party: '🎉 Party', accessory: '🕶️ Accessories', clothing: '🧥 Clothing'
 };
 function itemLabel(itemId) {
   const item = shopCatalog.find(i => i.id === itemId);
@@ -1877,7 +2132,7 @@ function renderShop() {
   document.getElementById('shop-balance').textContent = `🎈 ${balance} balloons to spend`;
   grid.innerHTML = '';
   const byCategory = {};
-  document.querySelector('#shop-header span').textContent = shopMode === 'tea' ? '🍵 ചായക്കട — Chayakkada' : '🛒 Shop';
+  document.querySelector('#shop-header span').textContent = SHOPS[shopMode].title;
   shopCatalog.forEach(item => { if ((item.shop || 'main') !== shopMode) return; (byCategory[item.category] = byCategory[item.category] || []).push(item); });
   Object.entries(byCategory).forEach(([cat, items]) => {
     const label = document.createElement('div');
@@ -1959,54 +2214,58 @@ function escapeHtml(s){ return s.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt
    servers rather than connecting players' devices directly to each
    other, which is what made voice fail on some mobile carrier networks)
    ========================================================= */
-let lkRoom = null;
-const voiceBtn = document.getElementById('voice-btn');
-let voiceOn = false;
+let lkRoom = null, micOn = false, voiceChain = Promise.resolve();
+const micBtn = document.getElementById('mic-btn'), soundBtn = document.getElementById('sound-btn');
 
-voiceBtn.onclick = async () => {
-  if (!voiceOn) {
+function paintVoiceBtns() {
+  micBtn.classList.toggle('on', micOn); soundBtn.classList.toggle('on', soundOn);
+  micBtn.innerHTML = micOn ? '<i class="fa-solid fa-microphone"></i>' : '<i class="fa-solid fa-microphone-slash"></i>';
+  soundBtn.innerHTML = soundOn ? '<i class="fa-solid fa-volume-high"></i>' : '<i class="fa-solid fa-volume-xmark"></i>';
+  micBtn.title = 'Microphone (' + (micOn ? 'on — others can hear you' : 'off') + ')';
+  soundBtn.title = 'Sound (' + (soundOn ? 'on' : 'off') + ')';
+}
+function applyRemoteAudio() {
+  document.querySelectorAll('audio.lk-voice-audio').forEach(el => { el.muted = !soundOn; if (soundOn && el.paused) el.play().catch(() => {}); });
+}
+async function connectVoice() {
+  const res = await fetch(`/livekit-token?identity=${encodeURIComponent(socket.id)}`);
+  let data; try { data = await res.json(); } catch (e) { throw new Error('the voice service is not reachable on this server'); }
+  if (!res.ok || !data.token) throw new Error(data.error || 'no voice token');
+  const room = new LivekitClient.Room({ adaptiveStream: true, dynacast: true });
+  room.on(LivekitClient.RoomEvent.TrackSubscribed, (track) => {
+    if (track.kind !== 'audio') return;
+    const el = track.attach(); el.className = 'lk-voice-audio'; el.style.display = 'none'; el.muted = !soundOn;
+    document.body.appendChild(el); if (soundOn) el.play().catch(() => {});
+  });
+  room.on(LivekitClient.RoomEvent.TrackUnsubscribed, (track) => { track.detach().forEach(el => el.remove()); });
+  room.on(LivekitClient.RoomEvent.Disconnected, () => { if (lkRoom === room) lkRoom = null; });
+  await room.connect(data.url, data.token);
+  lkRoom = room;
+  try { await room.startAudio(); } catch (e) {}
+}
+// Mic and Sound are independent: you can listen to others with your mic off. The voice room is joined only when either is on.
+function syncVoice() {
+  voiceChain = voiceChain.then(async () => {
+    const want = micOn || soundOn;
     try {
-      const res = await fetch(`/livekit-token?identity=${encodeURIComponent(socket.id)}`);
-      const data = await res.json();
-      if (!data.token || !data.url) throw new Error(data.error || 'Voice chat is not set up yet.');
-
-      lkRoom = new LivekitClient.Room();
-      lkRoom.on(LivekitClient.RoomEvent.TrackSubscribed, (track) => {
-        if (track.kind !== 'audio') return;
-        const audioEl = track.attach();
-        audioEl.autoplay = true;
-        audioEl.classList.add('lk-voice-audio');
-        audioEl.setAttribute('playsinline', '');
-        document.body.appendChild(audioEl);
-        // Some mobile browsers still silently block autoplay even here.
-        audioEl.play().catch(() => {});
-      });
-      lkRoom.on(LivekitClient.RoomEvent.TrackUnsubscribed, (track) => {
-        track.detach().forEach(el => el.remove());
-      });
-
-      await lkRoom.connect(data.url, data.token);
-      await lkRoom.localParticipant.setMicrophoneEnabled(true);
-
-      voiceOn = true;
-      voiceBtn.classList.add('on');
+      if (want && !lkRoom) await connectVoice();
+      if (!want && lkRoom) { const r = lkRoom; lkRoom = null; await r.disconnect(); document.querySelectorAll('audio.lk-voice-audio').forEach(el => el.remove()); }
+      if (lkRoom) { await lkRoom.localParticipant.setMicrophoneEnabled(micOn); applyRemoteAudio(); }
     } catch (e) {
-      alert('Voice chat unavailable: ' + e.message);
-      if (lkRoom) { lkRoom.disconnect(); lkRoom = null; }
+      if (micOn) { micOn = false; if (lkRoom) { try { await lkRoom.localParticipant.setMicrophoneEnabled(false); } catch (e2) {} } }
+      showToast('🎤 Voice chat unavailable: ' + (e.message || e));
+      paintVoiceBtns();
     }
-  } else {
-    voiceOn = false;
-    voiceBtn.classList.remove('on');
-    if (lkRoom) { await lkRoom.disconnect(); lkRoom = null; }
-    document.querySelectorAll('audio.lk-voice-audio').forEach(el => el.remove());
-  }
+  });
+}
+micBtn.onclick = () => { micOn = !micOn; paintVoiceBtns(); syncVoice(); };
+soundBtn.onclick = () => {
+  soundOn = !soundOn;
+  if (soundOn) { ensureAudio(); if (radioLoaded !== -1) radioAudio.play().catch(() => {}); }
+  else if (actx) actx.suspend();
+  paintVoiceBtns(); applyRemoteAudio(); syncVoice();
 };
-
-// Extra safety net: retry any still-blocked audio on the next tap anywhere,
-// since a tap always counts as a user gesture for autoplay purposes.
-document.addEventListener('click', () => {
-  document.querySelectorAll('audio.lk-voice-audio').forEach(el => { if (el.paused) el.play().catch(() => {}); });
-});
+paintVoiceBtns();
 
 /* =========================================================
    8) MAP + STATS + SHOP + INVENTORY PANELS
@@ -2084,7 +2343,9 @@ function drawMap() {
 
   mapCtx.font = '15px serif'; mapCtx.textAlign = 'center'; mapCtx.textBaseline = 'middle';
   { const t = worldToMap(TEA_POS.x, TEA_POS.z); mapCtx.fillText('🍵', t.px, t.py);
-    const s = worldToMap(SHOP_POS.x, SHOP_POS.z); mapCtx.fillText('🛒', s.px, s.py); }
+    const s = worldToMap(SHOP_POS.x, SHOP_POS.z); mapCtx.fillText('🛒', s.px, s.py);
+    const m = worldToMap(MILK_POS.x, MILK_POS.z); mapCtx.fillText('🥛', m.px, m.py);
+    Object.values(cars).forEach(c => { if (c.isCart) { const q = worldToMap(c.group.position.x, c.group.position.z); mapCtx.fillText('🐂', q.px, q.py); } }); }
   const me = worldToMap(myAvatar.position.x, myAvatar.position.z);
   mapCtx.fillStyle = '#FE019A';
   mapCtx.beginPath(); mapCtx.arc(me.px, me.py, 6, 0, Math.PI*2); mapCtx.fill();
