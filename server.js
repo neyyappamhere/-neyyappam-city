@@ -406,14 +406,29 @@ async function creditRealAccount(uid, amount) {
   }
 }
 
+// Roles: real players can run the chayakkada or the milk stall (one player per role). While a role is
+// empty the client shows a stand-in character; as soon as a player takes it the stand-in disappears.
+const roles = { chayakkaran: null, karavakkari: null };
+function roleStatePayload() {
+  const o = {};
+  for (const r of Object.keys(roles)) o[r] = roles[r] && players[roles[r]] ? { id: roles[r], name: players[roles[r]].name } : null;
+  return o;
+}
+
 io.on('connection', (socket) => {
   console.log('connected:', socket.id);
+  socket.emit('roleState', roleStatePayload());
 
   socket.on('join', (data) => {
+    const wantRole = ['chayakkaran', 'karavakkari'].includes(data.role) ? data.role : null;
+    const role = wantRole && !(roles[wantRole] && players[roles[wantRole]]) ? wantRole : null;
     players[socket.id] = {
       id: socket.id,
       name: (data.name || 'Guest').slice(0, 24),
-      gender: ['male', 'female', 'other'].includes(data.gender) ? data.gender : 'other',
+      gender: role === 'chayakkaran' ? 'male' : role === 'karavakkari' ? 'female' : (['male', 'female', 'other'].includes(data.gender) ? data.gender : 'other'),
+      role,
+      noKiss: false,
+      kissesGiven: 0,
       outfitColor: /^#?[0-9a-fA-F]{6}$/.test(data.outfitColor || '') ? data.outfitColor : null,
       hairStyle: ['short', 'pony', 'bandana'].includes(data.hairStyle) ? data.hairStyle : 'short',
       x: 0, y: 0, z: 0, rotY: 0,
@@ -426,6 +441,9 @@ io.on('connection', (socket) => {
       treasuresFound: 0,
       collectibles: []
     };
+    if (role) roles[role] = socket.id;
+    socket.emit('roleResult', { role, denied: !!wantRole && !role });
+    io.emit('roleState', roleStatePayload());
     socket.emit('currentPlayers', players);
     socket.emit('currentCars', occupiedCars); // let the newcomer know which cars are already taken
     socket.emit('deliveryUpdated', deliveryJob);
@@ -493,6 +511,15 @@ io.on('connection', (socket) => {
     p.balloons -= item.price;
     p.inventory[itemId] = (p.inventory[itemId] || 0) + 1;
     socket.emit('purchaseOk', { itemId, balloons: p.balloons, inventory: p.inventory });
+    // If a real player is running this stall, they earn half the price as a tip.
+    const holderRole = item.shop === 'tea' ? 'chayakkaran' : item.shop === 'milk' ? 'karavakkari' : null;
+    const hid = holderRole && roles[holderRole];
+    if (hid && hid !== socket.id && players[hid]) {
+      const tip = Math.max(1, Math.floor(item.price / 2));
+      players[hid].balloons += tip;
+      io.to(hid).emit('commission', { amount: tip, balloons: players[hid].balloons, from: p.name, itemId });
+      if (players[hid].uid) creditRealAccount(players[hid].uid, tip);
+    }
     if (p.uid) creditRealAccount(p.uid, -item.price); // debit the real account's ledger too
   });
 
@@ -622,6 +649,30 @@ io.on('connection', (socket) => {
     io.emit('cartCall', { carId });
   });
 
+  // --- Emotes (dance / laugh / aiyyo) are shown to everyone ---
+  socket.on('emote', ({ type } = {}) => {
+    const p = players[socket.id];
+    if (!p || !['dance', 'laugh', 'aiyyo'].includes(type)) return;
+    const now = Date.now();
+    if (p.lastEmote && now - p.lastEmote < 1500) return;
+    p.lastEmote = now;
+    io.emit('emote', { id: socket.id, type });
+  });
+
+  // --- Kisses: a short, consensual animation. Needs to be close, has a cooldown, and anyone can opt out. ---
+  socket.on('kiss', ({ targetId } = {}) => {
+    const p = players[socket.id], t = players[targetId];
+    if (!p || !t || targetId === socket.id) return;
+    const now = Date.now();
+    if (p.lastKiss && now - p.lastKiss < 4000) { socket.emit('kissDenied', { reason: 'cooldown' }); return; }
+    if (Math.hypot(p.x - t.x, p.z - t.z) > 3.6) { socket.emit('kissDenied', { reason: 'range' }); return; }
+    if (t.noKiss) { socket.emit('kissDenied', { reason: 'blocked' }); return; }
+    p.lastKiss = now; p.kissesGiven = (p.kissesGiven || 0) + 1;
+    io.emit('kissFx', { fromId: socket.id, toId: targetId });
+    io.to(targetId).emit('kissReceived', { from: p.name, fromId: socket.id });
+  });
+  socket.on('setNoKiss', (v) => { const p = players[socket.id]; if (p) p.noKiss = !!v; });
+
   socket.on('chatMessage', (text) => {
     const p = players[socket.id];
     if (!p || !text) return;
@@ -643,8 +694,10 @@ io.on('connection', (socket) => {
       deliveryJob.carrierId = null;
       io.emit('deliveryUpdated', deliveryJob);
     }
+    for (const r of Object.keys(roles)) if (roles[r] === socket.id) roles[r] = null;
     delete players[socket.id];
     io.emit('playerLeft', socket.id);
+    io.emit('roleState', roleStatePayload());
   });
 });
 
