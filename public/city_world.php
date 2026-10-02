@@ -56,6 +56,11 @@
   #mic-btn.on{ background:linear-gradient(135deg,#FE019A,#9b5de5); color:#fff; border-color:transparent; }
   #sound-btn.on{ background:linear-gradient(135deg,#00b37a,#00f593); color:#05210f; border-color:transparent; }
   .rbtn{ background:#5b3416; color:#ffd166; border:1px solid #c98a3a; border-radius:20px; padding:10px 16px; font-weight:700; font-size:.82em; cursor:pointer; }
+  .role-pill{ font-size:.7em; padding:8px 4px; } .role-pill:disabled{ opacity:.4; cursor:not-allowed; }
+  /* 80s film look: warm sepia grade + vignette (press V to toggle) */
+  #vignette{ position:absolute; inset:0; pointer-events:none; z-index:2; background:radial-gradient(ellipse at center, rgba(0,0,0,0) 55%, rgba(60,30,0,.38) 100%); }
+  #canvas-wrap canvas{ filter:sepia(.2) saturate(1.1) contrast(1.05); }
+  body.novintage #canvas-wrap canvas{ filter:none; } body.novintage #vignette{ display:none; }
 
   #map-btn, #stats-btn, #shop-btn, #inventory-btn{
     position:absolute; top:64px; z-index:5;
@@ -300,12 +305,20 @@
       <button type="button" class="gender-pill hair-pill" data-hair="pony">Pony</button>
       <button type="button" class="gender-pill hair-pill" data-hair="bandana">Bandana</button>
     </div>
+    <div class="picker-label">Play as</div>
+    <div class="gender-row">
+      <button type="button" class="gender-pill role-pill selected" data-role="visitor">Visitor</button>
+      <button type="button" class="gender-pill role-pill" data-role="chayakkaran">🍵 Chayakkadakkaran</button>
+      <button type="button" class="gender-pill role-pill" data-role="karavakkari">🥛 Karavakkari chechi</button>
+    </div>
+    <div class="note">Run the tea shop or the milk stall as a real player — customers tip you half of every sale.</div>
     <button class="enter" id="join-btn">Enter City</button>
     <div class="note" id="save-status">Guest mode — balloons won't be saved to an account.</div>
   </div>
 </div>
 
 <div id="canvas-wrap"></div>
+<div id="vignette"></div>
 
 <div id="topbar">
   <div id="brand">
@@ -400,6 +413,20 @@
   <button id="radio-next" class="rbtn">Next (N) ⏭</button>
 </div>
 <button id="cart-call" class="rbtn" style="display:none; position:absolute; right:16px; bottom:150px; z-index:6;">🐂 Moo (H)</button>
+<div id="social-ui" style="display:none; position:absolute; left:50%; bottom:250px; transform:translateX(-50%); z-index:6; gap:6px;">
+  <button id="kiss-btn" class="rbtn">💋 Kiss (K)</button>
+</div>
+<div id="emote-bar" style="display:none; position:absolute; right:16px; bottom:220px; z-index:6; flex-direction:column; gap:6px;">
+  <button id="emote-dance" class="rbtn" title="Dance (X)">💃</button>
+  <button id="emote-laugh" class="rbtn" title="Laugh (L)">😂</button>
+  <button id="emote-aiyyo" class="rbtn" title="Aiyyo! (Z)">😱</button>
+</div>
+<div id="kiss-prompt" style="display:none; position:absolute; left:50%; top:90px; transform:translateX(-50%); z-index:9; background:rgba(60,15,40,.94); color:#fff; padding:12px 16px; border-radius:16px; text-align:center; font-weight:700; font-size:.85em;">
+  <div id="kiss-text">💋</div>
+  <div style="display:flex; gap:8px; margin-top:8px; justify-content:center; flex-wrap:wrap;">
+    <button id="kiss-back" class="rbtn">💋 Kiss back</button><button id="kiss-ignore" class="rbtn">Ignore</button><button id="kiss-block" class="rbtn">🚫 No kisses</button>
+  </div>
+</div>
 <div id="radio-chip" style="display:none; position:absolute; top:140px; left:50%; transform:translateX(-50%); z-index:6; background:rgba(60,35,12,.88); color:#ffd166; padding:6px 14px; border-radius:16px; font-weight:700; font-size:.78em; pointer-events:none;"></div>
 
 <div id="joystick-zone">
@@ -454,6 +481,7 @@ if (!window.THREE) {
     renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(innerWidth, innerHeight);
     renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     document.getElementById('canvas-wrap').appendChild(renderer.domElement);
   } catch (e) {
     console.error('Renderer init failed:', e);
@@ -499,7 +527,11 @@ makeSky();
 scene.add(new THREE.HemisphereLight(0xffffff, 0x8f8464, 1.15));
 const sun = new THREE.DirectionalLight(0xfff3d6, 1.0);
 sun.position.set(10, 25, 8);
-scene.add(sun);
+sun.castShadow = true;
+{ const big = !(typeof matchMedia !== 'undefined' && matchMedia('(pointer:coarse)').matches), sc = sun.shadow.camera;
+  sun.shadow.mapSize.set(big ? 2048 : 1024, big ? 2048 : 1024); sc.left = -32; sc.right = 32; sc.top = 32; sc.bottom = -32; sc.near = 1; sc.far = 110;
+  sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.02; }
+scene.add(sun); scene.add(sun.target);
 
 const BLOCK = 20, GRID = 6, ROAD_W = 6;
 
@@ -751,7 +783,7 @@ function emojiSprite(ch, scale) {
 
 // ---- River: runs north–south just east of the city ----
 const RIVER = { x1: 66, x2: 80 };
-function isInWater(x, z) { return x > RIVER.x1 && x < RIVER.x2 && Math.abs(z) < 88; }
+function isInWater(x, z) { return x > RIVER.x1 && x < RIVER.x2 && Math.abs(z) < 88 && !onBridge(x, z); }
 
 const waterCanvas = document.createElement('canvas'); waterCanvas.width = waterCanvas.height = 128;
 {
@@ -1063,6 +1095,142 @@ function buildPalms() {
   });
   [trunks, fronds, nuts, canopy].forEach(m => { m.instanceMatrix.needsUpdate = true; m.frustumCulled = false; scene.add(m); });
 }
+/* =========================================================
+   80s KERALA RIVERSIDE — footbridge, river house (laterite + tiled roof), well, tulasi thara, jetty + vallam,
+   Chinese fishing net, paddy field with a scarecrow, petti kada, old electric poles with sagging wires
+   ========================================================= */
+const BRIDGE = { z: -33.5, x1: 61, x2: 85, w: 2.2, y: 0.5 };
+function onBridge(x, z) { return x > BRIDGE.x1 && x < BRIDGE.x2 && Math.abs(z - BRIDGE.z) < BRIDGE.w / 2; }
+let riverBoat = null, riverNet = null, riverNetHang = null;
+(function buildRiverside() {
+  const grp = (x, y, z, ry) => { const g = new THREE.Group(); g.position.set(x, y, z); g.rotation.y = ry || 0; scene.add(g); return g; };
+  const bx = (p, w, h, d, c, x, y, z, o) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), kMat(c, o)); m.position.set(x, y, z); p.add(m); return m; };
+  const cy = (p, r1, r2, h, c, x, y, z, seg, o) => { const m = new THREE.Mesh(new THREE.CylinderGeometry(r1, r2, h, seg || 10), kMat(c, o)); m.position.set(x, y, z); p.add(m); return m; };
+  const wood = 0x7a4c22, dark = 0x4a2f16;
+
+  // east bank land
+  const east = new THREE.Mesh(new THREE.PlaneGeometry(100, 200), kMat(0x79ad4a)); east.rotation.x = -Math.PI / 2; east.position.set(134, -0.01, 0); scene.add(east);
+
+  // ---- footbridge across the river ----
+  const bc = document.createElement('canvas'); bc.width = bc.height = 64; { const g = bc.getContext('2d'); g.fillStyle = '#8b5a2b'; g.fillRect(0, 0, 64, 64); g.fillStyle = '#5a3a1a'; for (let i = 0; i < 64; i += 16) g.fillRect(i, 0, 2, 64); }
+  const bt = new THREE.CanvasTexture(bc); bt.wrapS = bt.wrapT = THREE.RepeatWrapping; bt.repeat.set(24, 1);
+  const bridge = grp((BRIDGE.x1 + BRIDGE.x2) / 2, 0, BRIDGE.z);
+  const L = BRIDGE.x2 - BRIDGE.x1;
+  const deck = new THREE.Mesh(new THREE.BoxGeometry(L, 0.12, BRIDGE.w), new THREE.MeshStandardMaterial({ map: bt, roughness: 0.9 })); deck.position.y = BRIDGE.y - 0.07; bridge.add(deck);
+  [-1, 1].forEach(s => {
+    bx(bridge, L, 0.07, 0.07, wood, 0, BRIDGE.y + 1.0, s * (BRIDGE.w / 2 - 0.05));
+    bx(bridge, L, 0.07, 0.07, wood, 0, BRIDGE.y + 0.5, s * (BRIDGE.w / 2 - 0.05));
+    for (let x = -L / 2 + 1; x < L / 2; x += 3) bx(bridge, 0.09, 1.05, 0.09, wood, x, BRIDGE.y + 0.5, s * (BRIDGE.w / 2 - 0.05));
+  });
+  for (let x = -L / 2 + 3; x < L / 2; x += 6) [-1, 1].forEach(s => cy(bridge, 0.14, 0.14, 2.2, dark, x, -0.55, s * 0.9));
+
+  // ---- river house (faces the river, i.e. west) ----
+  const H = grp(101, 0, -30, -Math.PI / 2);
+  bx(H, 7.4, 0.5, 5.6, 0x9c5b3a, 0, 0.25, 0);                               // laterite plinth
+  bx(H, 7, 3.0, 5.2, 0xf1e3c2, 0, 2.0, 0);                                  // lime-washed walls
+  const tile = kMat(0xb5482a), tile2 = kMat(0x9c3b22);
+  const rf = new THREE.Mesh(new THREE.BoxGeometry(8.8, 0.14, 3.55), tile); rf.position.set(0, 4.2, 1.6); rf.rotation.x = 0.44; H.add(rf);
+  const rb = new THREE.Mesh(new THREE.BoxGeometry(8.8, 0.14, 3.55), tile2); rb.position.set(0, 4.2, -1.6); rb.rotation.x = -0.44; H.add(rb);
+  bx(H, 8.9, 0.12, 0.2, 0x8a2f18, 0, 4.93, 0);
+  [-3.5, 3.5].forEach(x => { const tri = new THREE.Mesh(new THREE.ShapeGeometry(new THREE.Shape([new THREE.Vector2(-2.6, 3.5), new THREE.Vector2(2.6, 3.5), new THREE.Vector2(0, 4.9)])), kMat(0xf1e3c2, { side: THREE.DoubleSide })); tri.rotation.y = -Math.PI / 2; tri.position.x = x; H.add(tri); });
+  bx(H, 7.4, 0.3, 2.4, 0x9c5b3a, 0, 0.35, 3.8);                             // veranda floor
+  [-3, -1, 1, 3].forEach(x => bx(H, 0.18, 3.0, 0.18, wood, x, 1.9, 4.8));  // veranda pillars
+  bx(H, 7.6, 0.14, 0.2, wood, 0, 3.4, 4.8);
+  const vr = new THREE.Mesh(new THREE.BoxGeometry(8.8, 0.12, 1.9), tile); vr.position.set(0, 3.75, 3.95); vr.rotation.x = 0.2; H.add(vr);
+  bx(H, 1.3, 2.3, 0.12, dark, 0, 1.65, 2.62);                               // door
+  [-2.3, 2.3].forEach(x => { bx(H, 1.2, 1.2, 0.1, wood, x, 2.1, 2.62); bx(H, 1.0, 1.0, 0.06, 0x1b1b1b, x, 2.1, 2.66); for (let k = -2; k <= 2; k++) bx(H, 0.04, 1.0, 0.05, 0x9a9a9a, x + k * 0.2, 2.1, 2.7); });
+  const ts = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 0.4), new THREE.MeshBasicMaterial({ map: makeSignTex('ഓം', '#f1e3c2', '#7a2e1d') })); ts.position.set(0, 3.15, 2.64); H.add(ts);
+  [0.25, 0.1].forEach((y, i) => bx(H, 2 - i*0.2, 0.15, 0.5, 0x9c5b3a, 0, y, 5.3 + i*0.25));  // steps
+  // adukkala (kitchen lean-to), firewood
+  bx(H, 3, 2.2, 3, 0xe8d7b0, -5.2, 1.4, -0.8);
+  const lt = new THREE.Mesh(new THREE.BoxGeometry(3.6, 0.12, 3.6), kMat(0xb59a58)); lt.position.set(-5.2, 2.75, -0.8); lt.rotation.z = 0.28; H.add(lt);
+  for (let r = 0; r < 3; r++) for (let k = 0; k < 5 - r; k++) { const lg = cy(H, 0.09, 0.09, 1.4, 0x6b4a2a, -6.6 + r*0.1, 0.2 + r*0.17, 1.2 + k*0.19 + r*0.09, 6); lg.rotation.z = Math.PI / 2; }
+  // TV antenna (Doordarshan era)
+  cy(H, 0.03, 0.03, 2.0, 0x888888, 2, 5.8, -0.5, 6);
+  [0.0, 0.4, 0.8].forEach(y => bx(H, 0.03, 0.03, 1.2 - y*0.6, 0x888888, 2, 5.2 + y*1.1, -0.5));
+  // tulasi thara
+  bx(H, 0.9, 0.7, 0.9, 0xf4efe0, 0.3, 0.35, 8.2); bx(H, 0.5, 0.2, 0.5, 0xf4efe0, 0.3, 0.8, 8.2);
+  const tu = new THREE.Mesh(new THREE.SphereGeometry(0.25, 8, 6), kMat(0x2e8b3d)); tu.position.set(0.3, 1.1, 8.2); H.add(tu);
+  // well (kinar) with pulley
+  const ring = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 0.9, 0.7, 16, 1, true), kMat(0x9c5b3a, { side: THREE.DoubleSide })); ring.position.set(-3.6, 0.35, 7.6); H.add(ring);
+  cy(H, 0.82, 0.82, 0.02, 0x143a52, -3.6, 0.2, 7.6, 14);
+  [-1, 1].forEach(s => bx(H, 0.1, 2.0, 0.1, wood, -3.6 + s * 0.85, 1.35, 7.6));
+  bx(H, 1.9, 0.1, 0.1, wood, -3.6, 2.35, 7.6);
+  const pul = new THREE.Mesh(new THREE.TorusGeometry(0.12, 0.03, 6, 12), kMat(0x333333)); pul.position.set(-3.6, 2.2, 7.6); H.add(pul);
+  cy(H, 0.14, 0.11, 0.22, 0x6a6f78, -3.6, 1.0, 7.6, 8);
+  // oil lantern
+  cy(H, 0.07, 0.07, 0.2, 0xffd27a, 1.2, 3.1, 4.7, 8, { emissive: 0xffa233, emissiveIntensity: 0.9 });
+  // 80s bicycle (Hercules)
+  const bic = new THREE.Group(); bic.position.set(-3.2, 0, 5.8); bic.rotation.y = 0.5; H.add(bic);
+  [-0.55, 0.55].forEach(x => { const w = new THREE.Mesh(new THREE.TorusGeometry(0.34, 0.02, 6, 20), kMat(0x222222)); w.position.set(x, 0.38, 0); bic.add(w); });
+  [[0, 0.62, 1.1, -0.55, 0.38], [0, 0.62, 1.1, 0.55, 0.38]].forEach(() => {});
+  const fr = cy(bic, 0.015, 0.015, 1.1, 0x1c1c1c, 0, 0.62, 0, 6); fr.rotation.z = Math.PI / 2;
+  const hb = cy(bic, 0.015, 0.015, 0.45, 0x1c1c1c, 0.55, 0.85, 0, 6); hb.rotation.x = Math.PI / 2;
+  bx(bic, 0.22, 0.05, 0.1, 0x1c1c1c, -0.3, 0.82, 0);
+  // yard hens' water pot & clothesline
+  [-1, 1].forEach(s => cy(H, 0.04, 0.04, 2.3, wood, 4.2, 1.15, 6 + s * 1.5, 6));
+  bx(H, 0.02, 0.02, 3, 0xdddddd, 4.2, 2.2, 6);
+  [0xffffff, 0xc0392b, 0xf2c230].forEach((c, i) => bx(H, 0.04, 0.8, 0.5, c, 4.2, 1.8, 5.2 + i * 0.8));
+
+  // ---- jetty + vallam (country boat) ----
+  bx(scene, 7.5, 0.12, 1.6, wood, 79.5, 0.38, -24);
+  [[76.2, -24.7], [76.2, -23.3], [79, -24.7], [79, -23.3], [82, -24.7], [82, -23.3]].forEach(([x, z]) => cy(scene, 0.09, 0.09, 1.4, dark, x, 0.1, z, 6));
+  riverBoat = new THREE.Group(); riverBoat.position.set(77, 0.2, -21.6); riverBoat.rotation.y = 0.08; scene.add(riverBoat);
+  const hull = new THREE.Mesh(new THREE.SphereGeometry(1, 18, 8, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), kMat(0x7a4a24, { side: THREE.DoubleSide, roughness: 0.8 })); hull.scale.set(2.9, 0.55, 0.85); hull.position.y = 0.45; riverBoat.add(hull);
+  bx(riverBoat, 4.2, 0.05, 0.9, 0xb98a52, 0, 0.1, 0);
+  [-1, 1].forEach(s => { const c = new THREE.Mesh(new THREE.ConeGeometry(0.2, 1.0, 6), kMat(0x7a4a24)); c.position.set(s * 2.85, 0.75, 0); c.rotation.z = -s * 1.1; riverBoat.add(c); });
+  [-0.8, 0.8].forEach(x => bx(riverBoat, 0.1, 0.06, 1.6, 0x5a3a1a, x, 0.5, 0));
+  cy(riverBoat, 0.04, 0.04, 3.6, 0xc9a96a, 0.2, 1.0, 0.7, 6).rotation.z = 1.2;     // punting pole
+
+  // ---- Chinese fishing net (cheena vala) ----
+  const net = grp(82.4, 0, -44);
+  [-1, 1].forEach(s => { const m = cy(net, 0.12, 0.14, 5.2, wood, 0.4, 2.5, s * 1.3, 8); m.rotation.z = -0.1; });
+  bx(net, 0.2, 0.2, 3.0, wood, 0.0, 5.0, 0);
+  riverNet = new THREE.Group(); riverNet.position.set(0, 5.0, 0); net.add(riverNet);
+  const boom = cy(riverNet, 0.1, 0.07, 9.5, wood, -4.75, 0, 0, 8); boom.rotation.z = Math.PI / 2;
+  riverNetHang = new THREE.Group(); riverNetHang.position.set(-9.4, 0, 0); riverNet.add(riverNetHang);
+  const nc = document.createElement('canvas'); nc.width = nc.height = 64; { const g = nc.getContext('2d'); g.strokeStyle = 'rgba(235,235,225,0.9)'; g.lineWidth = 2; for (let i = 0; i <= 64; i += 8) { g.beginPath(); g.moveTo(i, 0); g.lineTo(i, 64); g.moveTo(0, i); g.lineTo(64, i); g.stroke(); } }
+  const nt = new THREE.CanvasTexture(nc);
+  const netMesh = new THREE.Mesh(new THREE.PlaneGeometry(4.6, 4.6), new THREE.MeshBasicMaterial({ map: nt, transparent: true, side: THREE.DoubleSide })); netMesh.rotation.x = -Math.PI / 2; netMesh.position.y = -4.5; riverNetHang.add(netMesh);
+  [[-2.3, -2.3], [2.3, -2.3], [-2.3, 2.3], [2.3, 2.3]].forEach(([x, z]) => { const l = cy(riverNetHang, 0.01, 0.01, 4.6, 0xdddddd, x * 0.5, -2.3, z * 0.5, 4); });
+  net.scale.setScalar(0.9);
+
+  // ---- paddy field + scarecrow (kolam) ----
+  const pc = document.createElement('canvas'); pc.width = pc.height = 128; { const g = pc.getContext('2d'); g.fillStyle = '#7fc243'; g.fillRect(0, 0, 128, 128); g.strokeStyle = '#4f9a2a'; g.lineWidth = 3; for (let i = 6; i < 128; i += 12) { g.beginPath(); g.moveTo(i, 0); g.lineTo(i, 128); g.stroke(); } g.fillStyle = 'rgba(120,190,230,0.25)'; for (let i = 0; i < 128; i += 24) g.fillRect(0, i, 128, 4); }
+  const pt = new THREE.CanvasTexture(pc); pt.wrapS = pt.wrapT = THREE.RepeatWrapping; pt.repeat.set(6, 5);
+  const paddy = new THREE.Mesh(new THREE.PlaneGeometry(26, 20), new THREE.MeshStandardMaterial({ map: pt, roughness: 0.9 })); paddy.rotation.x = -Math.PI / 2; paddy.position.set(113, 0.03, -52); scene.add(paddy);
+  [[113, -42, 26, 0.5], [113, -62, 26, 0.5]].forEach(([x, z, w, d]) => bx(scene, w, 0.22, d, 0x8a6a3a, x, 0.1, z));
+  [[100, -52], [126, -52]].forEach(([x, z]) => bx(scene, 0.5, 0.22, 20, 0x8a6a3a, x, 0.1, z));
+  const sc = grp(113, 0, -52);
+  cy(sc, 0.04, 0.04, 2.0, wood, 0, 1.0, 0, 6); const arm = cy(sc, 0.03, 0.03, 1.6, wood, 0, 1.5, 0, 6); arm.rotation.z = Math.PI / 2;
+  const pot = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 8), kMat(0xb5482a)); pot.position.y = 2.15; sc.add(pot);
+  bx(sc, 0.5, 0.6, 0.12, 0xf4efe0, 0, 1.45, 0.02);
+  const hat = new THREE.Mesh(new THREE.ConeGeometry(0.3, 0.2, 8), kMat(0xc2a060)); hat.position.y = 2.4; sc.add(hat);
+
+  // ---- petti kada (80s roadside kiosk) near the bridge ----
+  const K = grp(63.6, 0.1, -27, -Math.PI / 2);
+  bx(K, 2.4, 2.2, 1.8, 0x2f8f83, 0, 1.1, 0);
+  bx(K, 2.2, 0.1, 1.2, 0x2f8f83, 0, 1.3, 1.5);
+  const aw = new THREE.Mesh(new THREE.BoxGeometry(2.8, 0.08, 1.4), kMat(0xd83c3c)); aw.position.set(0, 2.1, 1.1); aw.rotation.x = 0.25; K.add(aw);
+  [-1, 1].forEach(s => cy(K, 0.04, 0.04, 2.0, wood, s * 1.3, 1.0, 1.7, 6));
+  const ks = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 0.5), new THREE.MeshBasicMaterial({ map: makeSignTex('പെട്ടിക്കട', '#f4c95d', '#5a1f0f') })); ks.position.set(0, 2.5, 0.92); K.add(ks);
+  [0xe63946, 0xf2c230, 0x3a86ff, 0x2a9d8f, 0xf4a261].forEach((c, i) => bx(K, 0.28, 0.4, 0.04, c, -0.9 + i * 0.45, 1.75, 1.05));   // hanging snack packets
+  [-0.6, 0.2, 0.8].forEach(x => cy(K, 0.1, 0.1, 0.24, 0xf2d13b, x, 1.45, 1.5, 8));                                                       // banana/glass jars
+
+  // ---- old wooden electric poles with sagging wires along the main road ----
+  const polesX = [-50, -30, -10, 10, 30, 50], wireMat = new THREE.LineBasicMaterial({ color: 0x222222 });
+  polesX.forEach(x => { cy(scene, 0.12, 0.16, 7.0, 0x6b4a2a, x, 3.5, 3.6, 8); bx(scene, 0.12, 0.12, 2.0, 0x5a3a1a, x, 6.7, 3.6); [-0.8, 0, 0.8].forEach(dz => cy(scene, 0.05, 0.05, 0.14, 0xdfe6e9, x, 6.85, 3.6 + dz, 6)); });
+  for (let i = 0; i < polesX.length - 1; i++) [-0.8, 0, 0.8].forEach(dz => {
+    const pts = []; for (let k = 0; k <= 8; k++) { const t = k / 8; pts.push(new THREE.Vector3(polesX[i] + (polesX[i + 1] - polesX[i]) * t, 6.9 - Math.sin(t * Math.PI) * 0.8, 3.6 + dz)); }
+    scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), wireMat));
+  });
+
+  // ---- coconut palms + banana clumps around the house (kept clear of house, paddy and bridge) ----
+  const clear = (x, z) => !(x > 91 && x < 111 && z > -40 && z < -20) && !(x > 98 && x < 128 && z > -64 && z < -40) && !(Math.abs(z - BRIDGE.z) < 3 && x < 96);
+  for (let k = 0; k < 40; k++) { const x = 88 + Math.random() * 60, z = -80 + Math.random() * 130; if (clear(x, z)) addPalm(x, z); }
+  [[96, -37], [97, -23], [108, -36], [109, -23]].forEach(([x, z]) => addBanana(x, z));
+})();
+
 buildPalms();
 
 /* =========================================================
@@ -1074,7 +1242,7 @@ const SHOPS = {
   milk: { x: MILK_POS.x, z: MILK_POS.z, range: 6,         title: '🥛 പാൽ — Milk stall',      prompt: '🥛 Press B for palu, thairu & nei' },
   main: { x: SHOP_POS.x, z: SHOP_POS.z, range: 7,         title: '🛒 Shop',                 prompt: '🛒 Press B or tap to shop' },
 };
-let milkmaid = null;
+let milkmaid = null, chayaNpc = null;
 
 (function buildCowshed() {
   const cx = -10, y0 = 0.25, wood = 0x7a4c22, thatch = kMat(0xc2a060, { side: THREE.DoubleSide });
@@ -1099,12 +1267,34 @@ let milkmaid = null;
   ms.position.set(MILK_POS.x, y0 + 2.35, -3.93); scene.add(ms);
 })();
 
-/* ---- Sound engine (WebAudio, synthesised — no audio files). Everything stays silent until the Sound button is on. ---- */
-let soundOn = false, actx = null, master = null;
+/* ---- Sound engine (WebAudio). Silent until the Sound button is on.
+   REAL RECORDINGS: if you drop files like cow.mp3, goat.mp3, hen.mp3, rooster.mp3, ox.mp3, crow.mp3, koel.mp3,
+   kiss.mp3, laugh.mp3, aiyyo.mp3, bell.mp3 into your site's /sounds/ folder they are used automatically.
+   Anything missing falls back to the built-in synthesised voice. ---- */
+let soundOn = false, actx = null, master = null, glottal = null, noiseBuf = null;
+const SAMPLES = {}, SAMPLE_NAMES = ['cow', 'ox', 'goat', 'hen', 'rooster', 'crow', 'koel', 'kiss', 'laugh', 'aiyyo', 'bell'];
+async function loadSamples() {
+  for (const n of SAMPLE_NAMES) {
+    for (const ext of ['mp3', 'ogg']) {
+      try {
+        const r = await fetch(`/sounds/${n}.${ext}`);
+        if (!r.ok || /html/i.test(r.headers.get('content-type') || '')) continue;
+        SAMPLES[n] = await actx.decodeAudioData(await r.arrayBuffer()); break;
+      } catch (e) { /* not provided: use the synth */ }
+    }
+  }
+}
+function playSample(name, vol, rate = 1) {
+  const b = SAMPLES[name]; if (!b || !actx || !soundOn || vol < 0.01) return false;
+  const s = actx.createBufferSource(), g = actx.createGain();
+  s.buffer = b; s.playbackRate.value = rate * (0.95 + Math.random() * 0.1); g.gain.value = Math.min(1, vol);
+  s.connect(g); g.connect(master); s.start(); return true;
+}
 function ensureAudio() {
   if (!actx) {
     const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return false;
     actx = new AC(); master = actx.createGain(); master.gain.value = 0.9; master.connect(actx.destination);
+    loadSamples();
   }
   if (actx.state === 'suspended') actx.resume();
   return true;
@@ -1117,30 +1307,64 @@ function envGain(t0, attack, hold, release, peak) {
   g.gain.exponentialRampToValueAtTime(0.0001, t0 + attack + hold + release);
   return g;
 }
-// One synthesised "voice": a pitch glide through f[], shaped by band-pass formants [centre, Q, gain, sweepTo?].
-function vox({ type = 'sawtooth', f = [200, 200], dur = 1, vol = 0.3, formants = [[500, 5]], vib = [0, 0], at = 0.06, t0 = 0 }) {
+function glottalWave() {            // harmonic-rich "vocal fold" source instead of a plain sawtooth
+  if (!glottal) { const n = 40, re = new Float32Array(n), im = new Float32Array(n); for (let k = 1; k < n; k++) im[k] = 1 / Math.pow(k, 1.25); glottal = actx.createPeriodicWave(re, im); }
+  return glottal;
+}
+function noiseBuffer() {
+  if (!noiseBuf) { noiseBuf = actx.createBuffer(1, actx.sampleRate, actx.sampleRate); const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; }
+  return noiseBuf;
+}
+// One vocal sound: pitch glide through f[], harmonic source, breath noise, formant filters [centre, Q, gain, sweepTo?],
+// optional vibrato [Hz, depth] and tremolo "am" [Hz, depth] (the trembling "meeeh" of a goat).
+function vox({ type = 'glottal', f = [200, 200], dur = 1, vol = 0.3, formants = [[500, 5]], vib = [0, 0], am = null, noise = 0, at = 0.06, t0 = 0 }) {
   if (!actx || !soundOn || vol < 0.003) return;
-  const t = actx.currentTime + t0, o = actx.createOscillator(); o.type = type;
+  const t = actx.currentTime + t0, o = actx.createOscillator();
+  if (type === 'glottal') o.setPeriodicWave(glottalWave()); else o.type = type;
   o.frequency.setValueAtTime(f[0], t);
   for (let i = 1; i < f.length; i++) o.frequency.linearRampToValueAtTime(f[i], t + dur * i / (f.length - 1));
   if (vib[0]) { const l = actx.createOscillator(), lg = actx.createGain(); l.frequency.value = vib[0]; lg.gain.value = vib[1]; l.connect(lg); lg.connect(o.frequency); l.start(t); l.stop(t + dur + 0.2); }
-  const out = envGain(t, at, Math.max(0.01, dur - at - 0.15), 0.15, vol);
+  const out = envGain(t, at, Math.max(0.01, dur - at - 0.15), 0.15, vol), filters = [];
   formants.forEach(([fc, q, gain = 1, sweep]) => {
     const b = actx.createBiquadFilter(), gg = actx.createGain();
     b.type = 'bandpass'; b.frequency.setValueAtTime(fc, t); b.Q.value = q; gg.gain.value = gain;
     if (sweep) { b.frequency.linearRampToValueAtTime(sweep, t + dur * 0.5); b.frequency.linearRampToValueAtTime(fc, t + dur); }
-    o.connect(b); b.connect(gg); gg.connect(out);
+    o.connect(b); b.connect(gg); gg.connect(out); filters.push(b);
   });
-  out.connect(master); o.start(t); o.stop(t + dur + 0.25);
+  if (noise > 0) {
+    const ns = actx.createBufferSource(), ng = actx.createGain(); ns.buffer = noiseBuffer(); ns.loop = true; ng.gain.value = noise;
+    ns.connect(ng); filters.forEach(b => ng.connect(b)); ns.start(t); ns.stop(t + dur + 0.2);
+  }
+  if (am) {
+    const tr = actx.createGain(), l = actx.createOscillator(), lg = actx.createGain();
+    tr.gain.value = 1 - am[1]; l.frequency.value = am[0]; lg.gain.value = am[1]; l.connect(lg); lg.connect(tr.gain); l.start(t); l.stop(t + dur + 0.2);
+    out.connect(tr); tr.connect(master);
+  } else out.connect(master);
+  o.start(t); o.stop(t + dur + 0.25);
 }
+const S = (name, v, rate) => playSample(name, v * 1.2, rate);
 const SND = {
-  moo(v, p = 1)  { vox({ f: [105*p, 150*p, 135*p, 80*p], dur: 1.7, vol: 0.6*v, formants: [[300, 4, 1, 650], [800, 6, 0.6, 1100]], vib: [5, 4], at: 0.12 }); },
-  ox(v)          { SND.moo(v, 0.72); },                       // the kaalas: deeper than a cow
-  goat(v)        { vox({ f: [430, 480, 400], dur: 0.85, vol: 0.45*v, formants: [[1200, 4], [2200, 6, 0.6]], vib: [26, 40], at: 0.03 }); },
-  hen(v)         { for (let i = 0; i < 4; i++) vox({ f: [340, 250], dur: 0.11, vol: 0.28*v, formants: [[900, 3], [1800, 4, 0.5]], at: 0.01, t0: i*0.15 + Math.random()*0.03 }); },
-  rooster(v)     { [[0, 520, 0.16], [0.2, 520, 0.16], [0.4, 680, 0.22]].forEach(([d, fr, du]) => vox({ f: [fr, fr*1.08], dur: du, vol: 0.4*v, formants: [[1400, 4]], at: 0.02, t0: d }));
-                   vox({ f: [800, 950, 560], dur: 1.0, vol: 0.4*v, formants: [[1300, 4], [2400, 5, 0.5]], vib: [9, 25], at: 0.04, t0: 0.65 }); },
-  bell(v)        { if (!actx || !soundOn || v < 0.01) return; const t = actx.currentTime;
+  moo(v, p = 1)  { if (S('cow', v, p)) return; vox({ f: [98*p, 128*p, 150*p, 118*p, 78*p], dur: 2.0, vol: 0.65*v, formants: [[280, 5, 1, 520], [700, 7, 0.7, 950], [2400, 12, 0.12]], vib: [4.5, 3], noise: 0.07, at: 0.18 }); },
+  ox(v)          { if (S('ox', v)) return; SND.moo(v, 0.72); },                     // the kaalas: deeper than a cow
+  goat(v)        { if (S('goat', v)) return; vox({ f: [380, 430, 470, 410], dur: 1.0, vol: 0.5*v, formants: [[900, 5], [1700, 8, 0.8], [2600, 10, 0.3]], vib: [28, 35], am: [28, 0.55], noise: 0.12, at: 0.03 }); },
+  hen(v)         { if (S('hen', v)) return;
+                   for (let i = 0; i < 3; i++) vox({ f: [520, 380], dur: 0.1, vol: 0.3*v, formants: [[850, 4], [1700, 5, 0.6]], noise: 0.2, at: 0.008, t0: i*0.17 + Math.random()*0.02 });
+                   vox({ f: [480, 620, 430], dur: 0.45, vol: 0.3*v, formants: [[900, 4], [1900, 6, 0.6]], am: [38, 0.4], noise: 0.15, at: 0.02, t0: 0.55 }); },
+  rooster(v)     { if (S('rooster', v)) return;
+                   [[0, 520, 0.16], [0.2, 520, 0.16], [0.4, 700, 0.22]].forEach(([d, fr, du]) => vox({ f: [fr, fr*1.1], dur: du, vol: 0.4*v, formants: [[1300, 5], [2400, 7, 0.5]], noise: 0.06, at: 0.02, t0: d }));
+                   vox({ f: [700, 1100, 1300, 1000, 600], dur: 1.3, vol: 0.42*v, formants: [[1300, 6], [2600, 8, 0.7]], vib: [7, 30], noise: 0.08, at: 0.04, t0: 0.65 }); },
+  crow(v)        { if (S('crow', v)) return; for (let i = 0; i < 3; i++) vox({ f: [430, 360], dur: 0.3, vol: 0.35*v, formants: [[1100, 3], [2200, 4, 0.6]], noise: 0.45, at: 0.02, t0: i*0.46 }); },
+  koel(v)        { if (S('koel', v)) return; for (let i = 0; i < 5; i++) vox({ type: 'sine', f: [600 + i*110, 950 + i*120, 1250 + i*140], dur: 0.38, vol: 0.28*v, formants: [[1400, 0.7]], vib: [6, 14], at: 0.03, t0: i*0.52 }); },
+  laugh(v)       { if (S('laugh', v)) return; for (let i = 0; i < 5; i++) vox({ f: [240 - i*8, 205 - i*8], dur: 0.12, vol: (0.36 - i*0.04)*v, formants: [[700, 5], [1300, 6, 0.7]], noise: 0.3, at: 0.01, t0: i*0.17 }); },
+  aiyyo(v)       { if (S('aiyyo', v)) return;
+                   vox({ f: [230, 280], dur: 0.38, vol: 0.45*v, formants: [[700, 5, 1, 350], [1200, 6, 0.7, 2300]], noise: 0.05, at: 0.03 });
+                   vox({ f: [270, 190], dur: 0.5, vol: 0.45*v, formants: [[450, 5], [800, 6, 0.6]], vib: [6, 8], at: 0.04, t0: 0.3 }); },
+  kiss(v)        { if (S('kiss', v) || !actx || !soundOn || v < 0.01) return;
+                   const t = actx.currentTime, o = actx.createOscillator(), g = envGain(t, 0.005, 0.02, 0.06, 0.3*v);
+                   o.type = 'sine'; o.frequency.setValueAtTime(380, t); o.frequency.exponentialRampToValueAtTime(1100, t + 0.07); o.connect(g); g.connect(master); o.start(t); o.stop(t + 0.12);
+                   const ns = actx.createBufferSource(), bp = actx.createBiquadFilter(), ng = envGain(t + 0.06, 0.002, 0.012, 0.05, 0.35*v);
+                   ns.buffer = noiseBuffer(); bp.type = 'bandpass'; bp.frequency.value = 2600; bp.Q.value = 1.2; ns.connect(bp); bp.connect(ng); ng.connect(master); ns.start(t + 0.06); ns.stop(t + 0.2); },
+  bell(v)        { if (S('bell', v) || !actx || !soundOn || v < 0.01) return; const t = actx.currentTime;
                    [1150, 1725].forEach((fr, i) => { const o = actx.createOscillator(), g = envGain(t, 0.005, 0.01, 0.5, 0.14*v/(i + 1)); o.type = 'sine'; o.frequency.value = fr; o.connect(g); g.connect(master); o.start(t); o.stop(t + 0.6); }); },
 };
 function listenerPos() { return (drivingCarId && cars[drivingCarId]) ? cars[drivingCarId].group.position : myAvatar.position; }
@@ -1222,6 +1446,10 @@ addAnimal(makeGoat(0x8a5a3a), 62.8, -14, 0.9, 5.0, 0.12);
 [0xc0392b, 0xf0e6d0, 0x8a5a3a, 0x2b2b2b].forEach((c, i) => addAnimal(makeHen(c, 0x3a2a1a, false), -10 + i - 1.5, 6, 3.2, 1.4, 0.2 + i*0.02));
 [0xe6d8c0, 0xb5651d, 0x333333].forEach((c, i) => addAnimal(makeHen(c, 0x3a2a1a, false), -9 + i*2, -6.2, 3.5, 1.4, 0.21 + i*0.02));
 addAnimal(makeHen(0xa8451d, 0x1f6b3a, true), -13, -6, 1.5, 1.2, 0.2);       // rooster
+// river house yard: hens, a goat and a cow
+[0xc0392b, 0xf0e6d0, 0x2b2b2b].forEach((c, i) => addAnimal(makeHen(c, 0x3a2a1a, false), 94.5 + i*0.7, -30 + i, 2.2, 2.4, 0.19 + i*0.02));
+addAnimal(makeGoat(0xf3ebdd), 93, -26, 1.6, 1.3, 0.12);
+addAnimal(makeCow(0xf3ebdd, 0x8a5a3a), 94, -35, 2.0, 1.2, 0.06);
 
 const ANIMAL_SND = { cow: [26, 55, SND.moo], goat: [19, 55, SND.goat], hen: [11, 50, SND.hen], rooster: [47, 60, SND.rooster] };
 function animalPos(a, t) {
@@ -1229,10 +1457,23 @@ function animalPos(a, t) {
            z: a.hz + a.az*Math.sin(1.3*a.w*t + a.p3) + 0.4*a.az*Math.cos(2.1*a.w*t + a.p4) };
 }
 function animalsTick() {
-  const now = Date.now() / 1000;
+  const now = Date.now() / 1000, nowMs = Date.now(), inG = document.getElementById('name-gate').style.display === 'none';
   animals.forEach(a => {
     const p = animalPos(a, now), q = animalPos(a, now + 0.25);
-    a.g.position.x = p.x; a.g.position.z = p.z;
+    let px = p.x, pz = p.z;
+    if (inG) {
+      const mp = myAvatar.position, ddx = mp.x - p.x, ddz = mp.z - p.z, dd = Math.hypot(ddx, ddz);
+      if (a.kind === 'hen' || a.kind === 'rooster') {            // hens run away from you (funny, local-only)
+        const want = dd < 2.4 && !drivingCarId ? (2.4 - dd) * 1.1 : 0;
+        a.fx = (a.fx || 0) + ((-ddx / (dd || 1)) * want - (a.fx || 0)) * 0.12;
+        a.fz = (a.fz || 0) + ((-ddz / (dd || 1)) * want - (a.fz || 0)) * 0.12;
+        if (want > 0.8 && !a.scared) { a.scared = true; if (soundOn && Math.random() < 0.6) { const v = earVol(p.x, p.z, 18); if (v > 0.02) SND.hen(v); } }
+        if (want === 0) a.scared = false;
+        px += a.fx; pz += a.fz;
+      } else if (a.kind === 'goat' && !drivingCarId && dd < 1.25 && nowMs > goatCool) headbutt(a, ddx, ddz, dd);
+      else if (a.kind === 'cow' && dd < 3 && nowMs > (a.mooAt || 0)) { a.mooAt = nowMs + 14000; if (soundOn) SND.moo(Math.max(0.5, earVol(p.x, p.z, 26))); }
+    }
+    a.g.position.x = px; a.g.position.z = pz;
     const vx = q.x - p.x, vz = q.z - p.z, sp = Math.hypot(vx, vz) / 0.25;
     if (sp > 0.03) a.g.rotation.y = Math.atan2(-vz, vx);
     const amp = Math.min(0.5, sp * 1.6), ph = now * (3 + sp * 5);
@@ -1285,6 +1526,89 @@ addEventListener('keydown', e => {
   if (k === 'r') radioToggle(); else if (k === 'n') radioStep(1); else if (k === 'p') radioStep(-1); else if (k === 'h') cartCall();
 });
 
+/* =========================================================
+   FUN & SOCIAL — emotes, consensual kisses, goat headbutts, hens that run from you, role picker, 80s film look
+   ========================================================= */
+let myRole = null, knock = null, goatCool = 0, nextAmbient = 0, kissFrom = null, kissHide = null;
+const emoteSprites = [], heartFx = [];
+const EMOJI = { dance: '💃', laugh: '😂', aiyyo: '😱', kiss: '😘', blush: '😳' };
+function avatarOf(id) { return id === socket.id ? myAvatar : (others[id] && others[id].group); }
+function showEmote(id, type) {
+  const g = avatarOf(id); if (!g || !g.userData) return;
+  const now = performance.now();
+  g.userData.emote = { type, until: now + (type === 'kiss' ? 1800 : 2800) };
+  const sp = emojiSprite(EMOJI[type] || '✨', 0.9); sp.position.set(0, 2.45, 0); g.add(sp);
+  emoteSprites.push({ sp, g, until: now + 2600 });
+  const v = earVol(g.position.x, g.position.z, 30);
+  if (type === 'laugh') SND.laugh(v); else if (type === 'aiyyo') SND.aiyyo(v);
+}
+function kissFx(fromId, toId) {
+  const a = avatarOf(fromId), b = avatarOf(toId); if (!a || !b) return;
+  showEmote(fromId, 'kiss'); showEmote(toId, 'blush');
+  if (fromId === socket.id) a.rotation.y = Math.atan2(b.position.x - a.position.x, b.position.z - a.position.z);
+  const now = performance.now();
+  for (let i = 0; i < 6; i++) { const sp = emojiSprite('❤️', 0.55); sp.visible = false; scene.add(sp); heartFx.push({ sp, a, b, t0: now + i * 170, dur: 1300, j: (Math.random() - 0.5) * 0.6 }); }
+  const mid = earVol((a.position.x + b.position.x) / 2, (a.position.z + b.position.z) / 2, 30);
+  setTimeout(() => SND.kiss(mid), 250);
+}
+function nearestOther() {
+  let best = null, bd = 3.6;
+  Object.keys(others).forEach(id => { const o = others[id]; if (!o.group.visible) return; const d = Math.hypot(o.group.position.x - myAvatar.position.x, o.group.position.z - myAvatar.position.z); if (d < bd) { bd = d; best = id; } });
+  return best;
+}
+function inGame() { return document.getElementById('name-gate').style.display === 'none'; }
+function doKiss() { if (!inGame()) return; const id = nearestOther(); if (!id) { showToast('💋 Nobody close enough — walk up to someone first'); return; } socket.emit('kiss', { targetId: id }); }
+function doEmote(type) { if (inGame()) socket.emit('emote', { type }); }
+document.getElementById('kiss-btn').onclick = doKiss;
+document.getElementById('emote-dance').onclick = () => doEmote('dance');
+document.getElementById('emote-laugh').onclick = () => doEmote('laugh');
+document.getElementById('emote-aiyyo').onclick = () => doEmote('aiyyo');
+function hideKissPrompt() { document.getElementById('kiss-prompt').style.display = 'none'; }
+document.getElementById('kiss-back').onclick = () => { if (kissFrom) socket.emit('kiss', { targetId: kissFrom }); hideKissPrompt(); };
+document.getElementById('kiss-ignore').onclick = hideKissPrompt;
+document.getElementById('kiss-block').onclick = () => { socket.emit('setNoKiss', true); hideKissPrompt(); showToast('🚫 Kisses are off — others can no longer kiss you'); };
+addEventListener('keydown', e => {
+  if (/INPUT|TEXTAREA/.test((e.target.tagName || ''))) return;
+  const k = e.key.toLowerCase();
+  if (k === 'k') doKiss(); else if (k === 'x') doEmote('dance'); else if (k === 'l') doEmote('laugh'); else if (k === 'z') doEmote('aiyyo');
+  else if (k === 'v') { document.body.classList.toggle('novintage'); showToast(document.body.classList.contains('novintage') ? '🎞️ 80s film look off' : '🎞️ 80s film look on'); }
+});
+
+// Goat headbutt: get too close to an aadu and it sends you flying — everyone sees you shout "aiyyo!"
+function headbutt(a, ddx, ddz, dd) {
+  goatCool = Date.now() + 9000; const l = dd || 1;
+  knock = { vx: ddx / l * 0.3, vz: ddz / l * 0.3, n: 16 };
+  showToast('🐐 Aiyyo! The aadu headbutted you!'); socket.emit('emote', { type: 'aiyyo' });
+  SND.goat(Math.max(0.7, earVol(a.g.position.x, a.g.position.z, 20)));
+}
+function funTick(now) {
+  if (knock && knock.n-- > 0) { myAvatar.position.x += knock.vx; myAvatar.position.z += knock.vz; knock.vx *= 0.9; knock.vz *= 0.9; } else knock = null;
+  for (let i = emoteSprites.length - 1; i >= 0; i--) { const e = emoteSprites[i]; e.sp.position.y = 2.45 + (1 - (e.until - now) / 2600) * 0.3; if (now > e.until) { e.g.remove(e.sp); emoteSprites.splice(i, 1); } }
+  for (let i = heartFx.length - 1; i >= 0; i--) {
+    const h = heartFx[i], t = (now - h.t0) / h.dur;
+    if (t < 0) continue;
+    if (t >= 1) { scene.remove(h.sp); heartFx.splice(i, 1); continue; }
+    h.sp.visible = true;
+    h.sp.position.set(h.a.position.x + (h.b.position.x - h.a.position.x) * t + h.j * Math.sin(t * 3), 1.7 + Math.sin(t * Math.PI) * 0.7 + t * 0.2, h.a.position.z + (h.b.position.z - h.a.position.z) * t);
+    h.sp.material.opacity = 1 - t * t;
+  }
+  if (soundOn && now > nextAmbient) { if (nextAmbient) { const kind = ['koel', 'crow', 'koel'][Math.floor(Math.random() * 3)]; SND[kind](0.3); } nextAmbient = now + 14000 + Math.random() * 22000; }
+  if (riverBoat) { riverBoat.position.y = 0.2 + Math.sin(now / 760) * 0.03; riverBoat.rotation.z = Math.sin(now / 1100) * 0.03; }
+  if (riverNet) { riverNet.rotation.z = 0.32 + Math.sin(now / 2800) * 0.07; riverNetHang.rotation.z = -riverNet.rotation.z; }
+}
+function socialTick() {
+  const gate = !inGame(), near = (!gate && !drivingCarId) ? nearestOther() : null;
+  document.getElementById('social-ui').style.display = near ? 'flex' : 'none';
+  if (near) document.getElementById('kiss-btn').textContent = '💋 Kiss ' + (others[near].name || '') + ' (K)';
+  document.getElementById('emote-bar').style.display = gate ? 'none' : 'flex';
+}
+// Role picker (name gate)
+document.querySelectorAll('.role-pill').forEach(b => b.onclick = () => {
+  if (b.disabled) return;
+  document.querySelectorAll('.role-pill').forEach(x => x.classList.remove('selected')); b.classList.add('selected');
+  myRole = b.dataset.role === 'visitor' ? null : b.dataset.role;
+});
+
 function keralaTick(t) {
   const nowMs = Date.now(), nowS = nowMs / 1000;
   // samavar steam
@@ -1309,7 +1633,7 @@ function keralaTick(t) {
       }
     }
   });
-  animalsTick();
+  animalsTick(); funTick(performance.now()); socialTick();
   if (milkmaid) { milkmaid.rotation.z = Math.sin(t*1.2)*0.03; milkmaid.rotation.x = Math.sin(t*3)*0.03; }
   // radio dial + note
   teaFx.dial.emissiveIntensity = radioState.on ? 0.7 + 0.25*Math.sin(t*5) : 0;
@@ -1444,95 +1768,149 @@ let myWaypoint = null; // {x, z} or null
 const genderColors = { male: 0x3b82f6, female: 0xFE019A, other: 0x9b5de5 };
 const skinTone = 0xffe0c2;
 
-function makeAvatarMesh(gender, outfitColor, hairStyle) {
-  const color = outfitColor ? parseInt(outfitColor.replace('#',''), 16) : (genderColors[gender] || genderColors.other);
+const _geo = {};
+const G = (key, make) => _geo[key] || (_geo[key] = make());
+const shoeMatShared = new THREE.MeshStandardMaterial({ color: 0x1b1512, roughness: 0.6 });
+
+function makeAvatarMesh(gender, outfitColor, hairStyle, role) {
+  const isF = gender === 'female' || role === 'karavakkari';
+  const mature = role === 'karavakkari';
+  const color = outfitColor ? parseInt(String(outfitColor).replace('#', ''), 16) : (genderColors[gender] || genderColors.other);
   const style = hairStyle || 'short';
-  const group = new THREE.Group();
-  const skinMat = new THREE.MeshStandardMaterial({ color: skinTone });
-  const hairMat = new THREE.MeshStandardMaterial({ color: 0x2a1a1a });
-  const outfitMat = new THREE.MeshStandardMaterial({ color });
-  const pantsMat = new THREE.MeshStandardMaterial({ color: 0x2e2e38 });
-  const shoeMat = new THREE.MeshStandardMaterial({ color: 0x161616 });
-  const eyeMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a });
+  const group = new THREE.Group(), body = new THREE.Group(); group.add(body);
+  const skinHex = role === 'karavakkari' ? 0xc68a5d : role === 'chayakkaran' ? 0xae7a50 : 0xefc6a2;
+  const M = (c, o) => new THREE.MeshStandardMaterial(Object.assign({ color: c, roughness: 0.75 }, o || {}));
+  const skin = M(skinHex, { roughness: 0.5 });
+  const hairHex = mature ? 0x120c0a : 0x1d1411, hairMat = M(hairHex, { roughness: 0.4 });
+  const gold = M(0xf2b632, { metalness: 0.55, roughness: 0.35 });
+  const add = (parent, geo, mat, x, y, z) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); parent.add(m); return m; };
+  const sph = (r, ws = 14, hs = 10) => G('s' + [r, ws, hs].join(), () => new THREE.SphereGeometry(r, ws, hs));
+  const cyl = (r1, r2, h, s = 12) => G('c' + [r1, r2, h, s].join(), () => new THREE.CylinderGeometry(r1, r2, h, s));
+  const sh = isF ? 0.18 : 0.215, hipX = isF ? 0.095 : 0.09, hipY = 0.9, shY = 1.45, headY = 1.67;
+  body.scale.setScalar(isF ? (mature ? 0.935 : 0.94) : 1);
 
-  // Body proportions differ slightly by gender; everything else (limbs, face,
-  // hair) is built the same articulated way for all three.
-  const build = gender === 'female'
-    ? { shoulderW: 0.42, torsoW: 0.4, hipW: 0.34, armLen: 0.46 }
-    : gender === 'male'
-    ? { shoulderW: 0.58, torsoW: 0.52, hipW: 0.4,  armLen: 0.52 }
-    : { shoulderW: 0.48, torsoW: 0.46, hipW: 0.36, armLen: 0.48 };
+  // ---- torso: a lathe profile gives real chest / waist / hip shape ----
+  const prof = isF
+    ? (mature ? [[0.001,0.84],[0.158,0.86],[0.195,0.94],[0.165,1.02],[0.122,1.12],[0.14,1.22],[0.158,1.30],[0.145,1.38],[0.12,1.45],[0.05,1.49],[0.001,1.5]]
+              : [[0.001,0.84],[0.15,0.86],[0.18,0.94],[0.15,1.02],[0.115,1.12],[0.13,1.22],[0.148,1.30],[0.14,1.38],[0.12,1.45],[0.05,1.49],[0.001,1.5]])
+    : [[0.001,0.86],[0.16,0.88],[0.172,0.98],[0.158,1.12],[0.178,1.28],[0.19,1.40],[0.15,1.47],[0.06,1.51],[0.001,1.52]];
+  const torsoMat = role === 'chayakkaran' ? M(0xf4f1e8) : role === 'karavakkari' ? M(0xa61e24, { roughness: 0.6 }) : M(color);
+  const torso = add(body, G('torso' + isF + mature, () => new THREE.LatheGeometry(prof.map(p => new THREE.Vector2(p[0], p[1])), 22)), torsoMat, 0, 0, 0);
+  torso.scale.z = 0.7;
+  [-1, 1].forEach(s => add(body, sph(0.058, 10, 8), torsoMat, s * sh, shY - 0.035, 0));
+  add(body, cyl(0.048, 0.054, 0.11, 12), skin, 0, 1.535, 0);                        // neck
 
-  const legTop = 0.82, torsoH = 0.62;
-  const shoulderY = legTop + torsoH;
-  const headY = shoulderY + 0.34;
-
-  // Legs + shoes
-  [-1, 1].forEach(side => {
-    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.09, legTop, 8), pantsMat);
-    leg.position.set(side * build.hipW/2, legTop/2, 0);
-    const shoe = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.1, 0.26), shoeMat);
-    shoe.position.set(side * build.hipW/2, 0.05, 0.04);
-    group.add(leg, shoe);
+  // ---- head: skull, jaw, ears, eyes (white + iris + highlight), brows, nose, lips ----
+  const head = new THREE.Group(); head.position.set(0, headY, 0); body.add(head);
+  add(head, sph(0.105, 22, 16), skin, 0, 0, 0).scale.set(0.9, 1.1, 0.97);
+  add(head, sph(0.07, 14, 10), skin, 0, -0.065, 0.025).scale.set(0.95, 0.85, 0.9);
+  const eyeWhite = M(0xf6f2ec, { roughness: 0.3 }), irisMat = M(0x2a1a10, { roughness: 0.2 });
+  [-1, 1].forEach(s => {
+    add(head, sph(0.02, 8, 8), skin, s * 0.093, -0.005, 0).scale.set(0.5, 1, 0.8);
+    add(head, sph(0.0155, 10, 8), eyeWhite, s * 0.04, 0.022, 0.088).scale.set(1, 0.72, 0.55);
+    add(head, new THREE.CircleGeometry(0.0085, 12), irisMat, s * 0.04, 0.022, 0.0978);
+    add(head, new THREE.CircleGeometry(0.0033, 8), new THREE.MeshBasicMaterial({ color: 0xffffff }), s * 0.04 + 0.003, 0.025, 0.0985);
+    add(head, new THREE.BoxGeometry(0.034, 0.0065, 0.008), hairMat, s * 0.04, 0.047, 0.0835).rotation.z = -s * 0.12;
+    if (isF) add(head, new THREE.BoxGeometry(0.03, 0.003, 0.006), M(0x0d0806), s * 0.04, 0.034, 0.09);
   });
+  add(head, sph(0.016, 8, 8), skin, 0, -0.012, 0.098).scale.set(0.9, 1.1, 1.2);       // nose
+  const lipMat = M(role === 'karavakkari' ? 0xa8323f : isF ? 0xc9686a : 0xb87a68, { roughness: 0.4 });
+  add(head, sph(0.0165, 8, 6), lipMat, 0, -0.049, 0.089).scale.set(1.4, 0.42, 0.55);
+  add(head, sph(0.0165, 8, 6), lipMat, 0, -0.058, 0.088).scale.set(1.3, 0.45, 0.55);
+  if (role === 'chayakkaran') [-1, 0, 1].forEach(s => add(head, sph(0.017, 8, 6), hairMat, s * 0.016, -0.038, 0.095).scale.set(1.7, 0.55, 0.8));   // moustache
 
-  // Torso (tapered slightly at the waist using two stacked boxes) + skirt for female
-  const torso = new THREE.Mesh(new THREE.BoxGeometry(build.torsoW, torsoH, 0.28), outfitMat);
-  torso.position.y = legTop + torsoH/2;
-  group.add(torso);
-  if (gender === 'female') {
-    const skirt = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.36, 0.32, 10), outfitMat);
-    skirt.position.y = legTop - 0.02;
-    group.add(skirt);
-  }
-
-  // Arms + hands (simple articulated limbs, angled slightly outward)
-  [-1, 1].forEach(side => {
-    const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.065, build.armLen, 8), skinMat);
-    arm.position.set(side * (build.shoulderW/2 + 0.06), shoulderY - build.armLen/2 - 0.05, 0);
-    arm.rotation.z = side * 0.07;
-    const hand = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 8), skinMat);
-    hand.position.set(side * (build.shoulderW/2 + 0.06 + side*0.02), shoulderY - build.armLen - 0.08, 0);
-    group.add(arm, hand);
-  });
-
-  // Neck + rounded head
-  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.1, 0.12, 8), skinMat);
-  neck.position.y = shoulderY + 0.06;
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.26, 12, 12), skinMat);
-  head.position.y = headY;
-  group.add(neck, head);
-
-  // Simple face: two eyes + a small mouth on the front of the head
-  [-1, 1].forEach(side => {
-    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.03, 6, 6), eyeMat);
-    eye.position.set(side * 0.09, headY + 0.03, 0.235);
-    group.add(eye);
-  });
-  const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.02, 0.02), eyeMat);
-  mouth.position.set(0, headY - 0.09, 0.245);
-  group.add(mouth);
-
-  // Hairstyle is chosen independently of gender
-  if (style === 'pony') {
-    const hairTop = new THREE.Mesh(new THREE.SphereGeometry(0.27, 10, 10, 0, Math.PI*2, 0, Math.PI/1.7), hairMat);
-    hairTop.position.y = headY + 0.03;
-    const ponytail = new THREE.Mesh(new THREE.CylinderGeometry(0.05,0.09,0.45,6), hairMat);
-    ponytail.position.set(0, headY - 0.05, -0.26);
-    ponytail.rotation.x = 0.5;
-    group.add(hairTop, ponytail);
+  // ---- hair ----
+  const cap = add(head, new THREE.SphereGeometry(0.113, 22, 16, 0, Math.PI * 2, 0, Math.PI * 0.42), hairMat, 0, 0.012, -0.004);
+  cap.scale.set(0.94, 1.12, 1.0); cap.rotation.x = -0.32;
+  add(head, sph(0.1, 14, 10), hairMat, 0, mature || style === 'pony' ? -0.02 : 0.0, -0.035).scale.set(0.9, mature ? 1.0 : 0.8, 0.9);
+  if (mature) {                                                       // long braid with jasmine, pottu, jhumkas
+    for (let i = 0; i < 9; i++) {
+      add(body, sph(0.03 - i * 0.0012, 8, 6), hairMat, 0, 1.6 - i * 0.075, -0.115 - i * 0.012).scale.set(1.1, 1.0, 0.9);
+      add(body, sph(0.011, 6, 6), M(0xffffff), i % 2 ? 0.026 : -0.026, 1.6 - i * 0.075, -0.13 - i * 0.012);
+    }
+    add(body, sph(0.02, 6, 6), M(0xa61e24), 0, 0.93, -0.215);
+    for (let i = 0; i < 11; i++) { const a = -1.3 + i * 0.26; add(body, sph(0.012, 6, 6), M(0xffffff), Math.sin(a) * 0.105, headY + 0.04, -Math.cos(a) * 0.105); }
+    add(head, sph(0.007, 6, 6), M(0xb01822), 0, 0.062, 0.088);
+    [-1, 1].forEach(s => { add(head, sph(0.011, 6, 6), gold, s * 0.095, -0.03, 0.005); add(head, sph(0.007, 6, 6), gold, s * 0.095, -0.047, 0.005); });
+  } else if (style === 'pony') {
+    add(body, cyl(0.03, 0.045, 0.2, 8), hairMat, 0, 1.6, -0.15).rotation.x = 0.5;
+    add(body, cyl(0.02, 0.03, 0.2, 8), hairMat, 0, 1.46, -0.21).rotation.x = 0.25;
   } else if (style === 'bandana') {
-    const bandana = new THREE.Mesh(new THREE.TorusGeometry(0.27, 0.05, 8, 16, Math.PI*1.5), new THREE.MeshStandardMaterial({ color: 0xFFD700 }));
-    bandana.rotation.set(Math.PI/2, 0, 0.3);
-    bandana.position.y = headY + 0.04;
-    group.add(bandana);
-  } else {
-    const hairTop = new THREE.Mesh(new THREE.SphereGeometry(0.27, 10, 10, 0, Math.PI*2, 0, Math.PI/2.1), hairMat);
-    hairTop.position.y = headY + 0.03;
-    group.add(hairTop);
+    const b = add(head, new THREE.TorusGeometry(0.108, 0.012, 8, 22), M(0xffd700), 0, 0.06, 0); b.rotation.x = Math.PI / 2; b.scale.set(0.94, 1, 1.0);
   }
+
+  // ---- arms (pivot at the shoulder so they can swing) ----
+  const arms = [], sleeveMat = torsoMat;
+  [-1, 1].forEach(s => {
+    const pv = new THREE.Group(); pv.position.set(s * sh, shY - 0.03, 0); pv.rotation.z = s * 0.07; body.add(pv);
+    add(pv, cyl(0.04, 0.033, 0.29, 10), skin, 0, -0.145, 0);
+    add(pv, sph(0.034, 10, 8), skin, 0, -0.29, 0);
+    const fa = new THREE.Group(); fa.position.set(0, -0.29, 0); fa.rotation.x = -0.22; pv.add(fa);
+    add(fa, cyl(0.033, 0.024, 0.26, 10), skin, 0, -0.13, 0);
+    add(fa, sph(0.03, 10, 8), skin, 0, -0.275, 0).scale.set(0.95, 1.3, 0.55);
+    add(fa, cyl(0.008, 0.007, 0.05, 5), skin, -s * 0.026, -0.27, 0.014).rotation.z = s * 0.6;        // thumb
+    add(pv, cyl(0.05, 0.046, 0.17, 10), sleeveMat, 0, -0.085, 0);
+    if (mature) [0, 1].forEach(k => { add(fa, new THREE.TorusGeometry(0.03, 0.006, 6, 12), gold, 0, -0.232 - k * 0.018, 0).rotation.x = Math.PI / 2; });
+    arms.push(pv);
+  });
+
+  // ---- legs (hip + knee + shoe) ----
+  const legs = [], legMat = (isF || role === 'chayakkaran') ? skin : M(0x2e2e38);
+  const footMat = role === 'chayakkaran' ? M(0x6b4a2a) : shoeMatShared;
+  [-1, 1].forEach(s => {
+    const pv = new THREE.Group(); pv.position.set(s * hipX, hipY, 0); body.add(pv);
+    add(pv, cyl(0.078, 0.058, 0.44, 12), legMat, 0, -0.22, 0);
+    add(pv, sph(0.058, 10, 8), legMat, 0, -0.44, 0);
+    const sk = new THREE.Group(); sk.position.set(0, -0.44, 0); pv.add(sk);
+    add(sk, cyl(0.056, 0.036, 0.42, 10), legMat, 0, -0.21, 0);
+    add(sk, new THREE.BoxGeometry(0.075, 0.055, 0.21), footMat, 0, -0.435, 0.045);
+    legs.push(pv);
+  });
+
+  // ---- lower garments & costume details ----
+  if (role === 'chayakkaran') {                                      // mundu with kasavu border, thorthu on the shoulder
+    add(body, cyl(0.19, 0.27, 0.62, 18), M(0xf6f3ea), 0, 0.64, 0);
+    add(body, new THREE.TorusGeometry(0.27, 0.014, 6, 24), gold, 0, 0.345, 0).rotation.x = Math.PI / 2;
+    add(body, new THREE.TorusGeometry(0.195, 0.02, 6, 20), M(0xe3ddcc), 0, 0.93, 0).rotation.x = Math.PI / 2;
+    const cv = document.createElement('canvas'); cv.width = cv.height = 32; const g = cv.getContext('2d');
+    g.fillStyle = '#ffffff'; g.fillRect(0, 0, 32, 32); g.fillStyle = '#c0392b'; for (let i = 0; i < 32; i += 8) { g.fillRect(i, 0, 4, 32); g.fillRect(0, i, 32, 4); }
+    const tx = new THREE.CanvasTexture(cv); tx.wrapS = tx.wrapT = THREE.RepeatWrapping; tx.repeat.set(2, 6);
+    const tw = add(body, new THREE.BoxGeometry(0.1, 0.5, 0.035), new THREE.MeshStandardMaterial({ map: tx, roughness: 0.9 }), -sh + 0.01, 1.27, 0.12); tw.rotation.z = 0.12;
+  } else if (role === 'karavakkari') {                               // pavada, davani
+    add(body, cyl(0.2, 0.42, 0.86, 22), M(0x1e7a4a, { roughness: 0.65 }), 0, 0.5, 0);
+    add(body, new THREE.TorusGeometry(0.42, 0.022, 6, 28), gold, 0, 0.1, 0).rotation.x = Math.PI / 2;
+    add(body, new THREE.TorusGeometry(0.33, 0.012, 6, 28), gold, 0, 0.28, 0).rotation.x = Math.PI / 2;
+    const sash = new THREE.Group(); sash.position.set(0, 1.22, 0); sash.scale.set(1, 1, 0.7); sash.rotation.z = 0.8; body.add(sash);
+    add(sash, new THREE.TorusGeometry(0.175, 0.02, 8, 24), M(0xf2c230), 0, 0, 0).rotation.x = Math.PI / 2;
+  } else if (isF) {
+    add(body, cyl(0.17, 0.27, 0.46, 18), M(color), 0, 0.7, 0);
+  }
+  group.userData = { legs, arms, body, head, emote: null };
+  group.traverse(o => { if (o.isMesh) o.castShadow = true; });
   return group;
 }
+
+// Walk cycle, idle breathing and emotes. Works for me, other players and the stand-in characters.
+function tickAvatar(g, now) {
+  const u = g && g.userData; if (!u || !u.legs) return;
+  const p = g.position, sp = u.lx === undefined ? 0 : Math.hypot(p.x - u.lx, p.z - u.lz);
+  u.lx = p.x; u.lz = p.z; u.sp = (u.sp || 0) * 0.75 + sp * 0.25; u.ph = (u.ph || 0) + sp * 9;
+  const amp = Math.min(0.75, u.sp * 6), la = Math.sin(u.ph) * amp, T = now / 1000;
+  let a0x = -la * 0.85, a1x = la * 0.85, a0z = -0.07, a1z = 0.07, bob = Math.abs(Math.sin(u.ph)) * 0.02 * amp * 4 + Math.sin(T * 2) * 0.003;
+  let rx = 0, rz = 0, l0 = la, l1 = -la;
+  const e = u.emote && now < u.emote.until ? u.emote : null;
+  if (e) {
+    const t6 = T * 6;
+    if (e.type === 'dance') { a0x = -2.4 + Math.sin(t6) * 0.5; a1x = -2.4 - Math.sin(t6) * 0.5; a0z = -0.5; a1z = 0.5; rz = Math.sin(t6 * 0.5) * 0.12; bob = Math.abs(Math.sin(t6)) * 0.07; l0 = Math.sin(t6) * 0.5; l1 = -Math.sin(t6) * 0.5; }
+    else if (e.type === 'laugh') { a0x = a1x = -0.9; bob = Math.abs(Math.sin(T * 14)) * 0.04; rx = 0.12 + Math.sin(T * 10) * 0.06; }
+    else if (e.type === 'aiyyo') { a0x = a1x = -2.6; a0z = -0.9; a1z = 0.9; rz = Math.sin(T * 30) * 0.05; bob = Math.abs(Math.sin(T * 18)) * 0.03; }
+    else if (e.type === 'kiss') { a1x = -2.0 + Math.sin(T * 6) * 0.15; a1z = 0.4; rx = -0.05; }
+  } else u.emote = null;
+  u.legs[0].rotation.x = l0; u.legs[1].rotation.x = l1;
+  u.arms[0].rotation.x = a0x; u.arms[1].rotation.x = a1x; u.arms[0].rotation.z = a0z; u.arms[1].rotation.z = a1z;
+  u.body.position.y = bob; u.body.rotation.x = rx; u.body.rotation.z = rz;
+}
+
 function makeLabel(text) {
   const canvas = document.createElement('canvas');
   canvas.width = 256; canvas.height = 64;
@@ -1561,42 +1939,20 @@ let myHairStyle = 'short';
   keeper.position.set(10, 0.25, 12.7);
   keeper.add(makeLabel('Shopkeeper'));
   scene.add(keeper);
-  const chaya = makeAvatarMesh('male', '#ffffff', 'short');          // the chayakkaran, behind the counter
-  chaya.position.set(-10, 0.27, 10.8); chaya.rotation.y = Math.PI;
-  chaya.add(makeLabel('Chayakkaran'));
-  scene.add(chaya);
-  milkmaid = buildKaravakkari(); milkmaid.position.set(-6, 0.27, -5.5); scene.add(milkmaid);
+  chayaNpc = makeAvatarMesh('male', '#ffffff', 'short', 'chayakkaran');            // stand-in until a real player takes the role
+  chayaNpc.position.set(-10, 0.27, 10.8); chayaNpc.rotation.y = Math.PI;
+  chayaNpc.add(makeLabel('Chayakkaran 🤖')); scene.add(chayaNpc);
+  milkmaid = makeAvatarMesh('female', '#a61e24', 'short', 'karavakkari');
+  milkmaid.position.set(-6, 0.27, -5.5); milkmaid.add(makeLabel('Karavakkari 🤖')); milkProps(milkmaid); scene.add(milkmaid);
 }
 
-// Karavakkari chechi (കറവക്കാരി, the milkmaid): kasavu-style blouse, long green pavada, davani, jasmine in her braid.
-function buildKaravakkari() {
-  const g = makeAvatarMesh('female', '#b3261e', 'short');
-  g.children.forEach(ch => { if (ch.geometry && ch.geometry.type === 'CylinderGeometry' && ch.geometry.parameters.radiusBottom === 0.36) ch.visible = false; });  // swap the short skirt for a pavada
-  const add = (geo, mat, x, y, z) => { const o = new THREE.Mesh(geo, mat); o.position.set(x, y, z); g.add(o); return o; };
-  const green = kMat(0x1e7a4a), gold = kMat(0xf2b632, { metalness: 0.4, roughness: 0.4 }), red = kMat(0xb3261e);
-  const white = kMat(0xffffff), yellow = kMat(0xf2c230), hair = kMat(0x1a1010), steel = kMat(0xc9ced6, { metalness: 0.6, roughness: 0.3 });
-  add(new THREE.CylinderGeometry(0.22, 0.46, 0.88, 16), green, 0, 0.46, 0);                              // pavada
-  add(new THREE.TorusGeometry(0.46, 0.03, 6, 20), gold, 0, 0.06, 0).rotation.x = Math.PI/2;              // gold hem
-  add(new THREE.TorusGeometry(0.4, 0.02, 6, 20), gold, 0, 0.2, 0).rotation.x = Math.PI/2;
-  [-1, 1].forEach(s => {
-    add(new THREE.CylinderGeometry(0.088, 0.088, 0.2, 8), red, s*0.27, 1.3, 0);                          // blouse sleeves
-    add(new THREE.TorusGeometry(0.07, 0.014, 6, 12), gold, s*0.285, 0.97, 0).rotation.x = Math.PI/2;     // bangles
-    add(new THREE.TorusGeometry(0.07, 0.014, 6, 12), gold, s*0.285, 1.0, 0).rotation.x = Math.PI/2;
-    add(new THREE.SphereGeometry(0.03, 6, 6), gold, s*0.265, 1.76, 0);                                    // earrings
-  });
-  add(new THREE.BoxGeometry(0.13, 0.9, 0.34), yellow, 0, 1.08, 0).rotation.z = 0.7;                       // davani across the shoulder
-  add(new THREE.SphereGeometry(0.025, 6, 6), red, 0, 1.83, 0.262);                                         // pottu
-  for (let i = 0; i < 7; i++) {                                                                           // long braid with jasmine
-    add(new THREE.SphereGeometry(0.055 - i*0.002, 6, 6), hair, 0, 1.72 - i*0.1, -0.27 - i*0.012);
-    add(new THREE.SphereGeometry(0.03, 6, 6), white, (i % 2 ? 0.045 : -0.045), 1.72 - i*0.1, -0.31 - i*0.012);
-  }
-  add(new THREE.SphereGeometry(0.04, 6, 6), red, 0, 1.0, -0.36);
-  for (let i = 0; i < 9; i++) { const a = -1.1 + i*0.275; add(new THREE.SphereGeometry(0.032, 6, 6), white, Math.sin(a)*0.265, 1.82, -Math.cos(a)*0.265); }
-  add(new THREE.CylinderGeometry(0.16, 0.13, 0.3, 12), steel, 0.55, 0.17, 0.35);                          // milk pail
-  add(new THREE.CylinderGeometry(0.15, 0.15, 0.01, 12), white, 0.55, 0.32, 0.35);
-  add(new THREE.CylinderGeometry(0.2, 0.2, 0.3, 8), kMat(0x7a4c22), -0.6, 0.15, 0.3);                     // stool
-  g.add(makeLabel('Karavakkari 🥛'));
-  return g;
+// Milk pail + stool beside Karavakkari chechi
+function milkProps(g) {
+  const steel = kMat(0xc9ced6, { metalness: 0.6, roughness: 0.3 });
+  const add = (geo, m, x, y, z) => { const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); g.add(o); return o; };
+  add(new THREE.CylinderGeometry(0.16, 0.13, 0.3, 12), steel, 0.55, 0.17, 0.35);
+  add(new THREE.CylinderGeometry(0.15, 0.15, 0.01, 12), kMat(0xffffff), 0.55, 0.32, 0.35);
+  add(new THREE.CylinderGeometry(0.2, 0.2, 0.3, 8), kMat(0x7a4c22), -0.6, 0.15, 0.3);
 }
 let myAvatar = makeAvatarMesh(myGender, myOutfitColor, myHairStyle);
 scene.add(myAvatar);
@@ -1642,8 +1998,9 @@ if (handoffName) document.getElementById('name-input').value = handoffName;
    4) MOVEMENT
    ========================================================= */
 const keys = {};
-addEventListener('keydown', e => keys[e.key.toLowerCase()] = true);
-addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
+const KEYALIAS = { arrowup: 'w', arrowdown: 's', arrowleft: 'a', arrowright: 'd' };   // arrow keys now work like WASD
+addEventListener('keydown', e => { const k = e.key.toLowerCase(); keys[KEYALIAS[k] || k] = true; if (KEYALIAS[k] && !/INPUT|TEXTAREA/.test((e.target.tagName || ''))) e.preventDefault(); });
+addEventListener('keyup', e => { const k = e.key.toLowerCase(); keys[KEYALIAS[k] || k] = false; });
 
 let camYaw = 0, camPitch = 0.15, dragging = false, lastX = 0, lastY = 0;
 function startDrag(x,y){ dragging = true; lastX = x; lastY = y; }
@@ -1865,8 +2222,9 @@ function updateMovement() {
   if (dx || dz) {
     const len = Math.hypot(dx,dz) || 1;
     dx/=len; dz/=len;
-    const moveX = dx*Math.cos(camYaw) - dz*Math.sin(camYaw);
-    const moveZ = dx*Math.sin(camYaw) + dz*Math.cos(camYaw);
+    // Camera looks along (sin yaw, cos yaw); screen-right is (-cos yaw, sin yaw). (The old formula had both axes mirrored.)
+    const moveX = -dx*Math.cos(camYaw) - dz*Math.sin(camYaw);
+    const moveZ =  dx*Math.sin(camYaw) - dz*Math.cos(camYaw);
     const sp = swimming ? speed * 0.55 : speed;   // swimming is slower
     myAvatar.position.x += moveX*sp;
     myAvatar.position.z += moveZ*sp;
@@ -1877,7 +2235,7 @@ function updateMovement() {
     checkTreasureProximity();
   }
   // Sink into the water while swimming, with a gentle bob
-  const targetY = swimming ? -0.65 + Math.sin(performance.now()/350) * 0.06 : 0;
+  const targetY = swimming ? -0.65 + Math.sin(performance.now()/350) * 0.06 : (onBridge(myAvatar.position.x, myAvatar.position.z) ? BRIDGE.y : 0);
   myAvatar.position.y += (targetY - myAvatar.position.y) * 0.25;
   setChip(swimming ? '🏊 Swimming' : null);
   const camDist = 6;
@@ -1982,11 +2340,14 @@ document.getElementById('name-input').addEventListener('keydown', e => { if (e.k
 function enterCity() {
   myName = document.getElementById('name-input').value.trim() || 'Guest';
   scene.remove(myAvatar);
-  myAvatar = makeAvatarMesh(myGender, myOutfitColor, myHairStyle);
+  if (myRole === 'chayakkaran') myGender = 'male'; else if (myRole === 'karavakkari') myGender = 'female';
+  myAvatar = makeAvatarMesh(myGender, myOutfitColor, myHairStyle, myRole);
+  if (myRole === 'chayakkaran') { myAvatar.position.set(-10, 0.27, 10.8); myAvatar.rotation.y = Math.PI; camYaw = Math.PI; }
+  else if (myRole === 'karavakkari') { myAvatar.position.set(-6, 0.27, -5.5); camYaw = 0; }
   scene.add(myAvatar);
   document.getElementById('name-gate').style.display = 'none';
   setTimeout(() => showToast('🔇 Sound and 🎤 mic are OFF — tap the round icons at top-left to turn them on'), 800);
-  socket.emit('join', { name: myName, gender: myGender, outfitColor: myOutfitColor, hairStyle: myHairStyle, uid: handoffUid || null, startingBalloons: handoffBalloons });
+  socket.emit('join', { name: myName, gender: myGender, outfitColor: myOutfitColor, hairStyle: myHairStyle, role: myRole, uid: handoffUid || null, startingBalloons: handoffBalloons });
 }
 
 function refreshOnlineCount(){ onlineEl.textContent = Object.keys(others).length + 1; }
@@ -2053,6 +2414,39 @@ socket.on('radioState', (s) => {
 });
 socket.on('cartCall', ({ carId }) => { const c = cars[carId]; if (c && c.isCart) oxCall(c); });
 
+// --- emotes, kisses, roles ---
+socket.on('emote', ({ id, type }) => showEmote(id, type));
+socket.on('kissFx', ({ fromId, toId }) => kissFx(fromId, toId));
+socket.on('kissReceived', ({ from, fromId }) => {
+  kissFrom = fromId;
+  document.getElementById('kiss-text').textContent = '💋 ' + from + ' blew you a kiss!';
+  document.getElementById('kiss-prompt').style.display = 'block';
+  clearTimeout(kissHide); kissHide = setTimeout(hideKissPrompt, 12000);
+});
+socket.on('kissDenied', ({ reason }) => showToast(reason === 'range' ? '💋 Too far — walk closer first' : reason === 'blocked' ? '🙅 They prefer no kisses' : reason === 'cooldown' ? '💋 Easy there, romeo — wait a few seconds' : 'Kiss failed'));
+socket.on('roleState', (s) => {
+  if (chayaNpc) chayaNpc.visible = !s.chayakkaran;
+  if (milkmaid) milkmaid.visible = !s.karavakkari;
+  document.querySelectorAll('.role-pill').forEach(b => {
+    const r = b.dataset.role; if (r === 'visitor') return;
+    const t = s[r], taken = !!t && t.id !== socket.id;
+    b.disabled = taken; b.title = taken ? 'Taken by ' + t.name : '';
+    if (taken && myRole === r && !inGame()) { myRole = null; b.classList.remove('selected'); document.querySelector('.role-pill[data-role="visitor"]').classList.add('selected'); }
+  });
+});
+socket.on('roleResult', ({ role, denied }) => {
+  if (denied) {
+    showToast('That role was just taken — you joined as a visitor'); myRole = null;
+    const pos = myAvatar.position.clone(), ry = myAvatar.rotation.y; scene.remove(myAvatar);
+    myAvatar = makeAvatarMesh(myGender, myOutfitColor, myHairStyle, null); myAvatar.position.copy(pos); myAvatar.rotation.y = ry; scene.add(myAvatar);
+  } else if (role === 'chayakkaran') showToast('🍵 You are the Chayakkadakkaran! Customers tip you when they buy.');
+  else if (role === 'karavakkari') showToast('🥛 You are Karavakkari chechi! Customers tip you when they buy.');
+});
+socket.on('commission', ({ amount, balloons, from, itemId }) => {
+  balloonEl.textContent = balloons; refreshAffordability();
+  showToast(`💰 ${from} bought ${itemLabel(itemId)} — you earned +${amount} 🎈`);
+});
+
 // --- Delivery job updates ---
 const jobBanner = document.getElementById('job-banner');
 socket.on('deliveryUpdated', (job) => {
@@ -2104,6 +2498,13 @@ socket.on('purchaseOk', ({ itemId, balloons, inventory }) => {
   balloonEl.textContent = balloons;
   myInventory = inventory;
   showToast(`Bought ${itemLabel(itemId)}!`);
+  const bought = shopCatalog.find(i => i.id === itemId);
+  if (bought && (bought.shop === 'tea' || bought.shop === 'milk') && Math.random() < 0.7) {
+    const q = bought.shop === 'tea'
+      ? ['🍵 Chaya kudikku mone, chinthikkaan sheshi varum!', '🍵 Chaya + parippuvada = swargam!', '🍵 Ente ponno, aa chaya kidu!']
+      : ['🥛 Palu shudham — vellam cherkkilla, promise!', '🥛 Ammaye orkkum ee thairu kazhikkumbol!', '🥛 Pasu paranjathaa — nalla palu!'];
+    setTimeout(() => showToast(q[Math.floor(Math.random() * q.length)]), 700);
+  }
   renderShop();
   renderInventory();
 });
@@ -2174,10 +2575,10 @@ function renderInventory() {
 }
 
 function addOtherPlayer(p) {
-  const group = makeAvatarMesh(p.gender, p.outfitColor, p.hairStyle);
-  group.add(makeLabel(p.name));
+  const group = makeAvatarMesh(p.gender, p.outfitColor, p.hairStyle, p.role);
+  group.add(makeLabel(p.name + (p.role === 'chayakkaran' ? ' 🍵' : p.role === 'karavakkari' ? ' 🥛' : '')));
   scene.add(group);
-  others[p.id] = { group, target: p };
+  others[p.id] = { group, target: p, name: p.name, role: p.role };
 }
 
 setInterval(() => {
@@ -2382,6 +2783,15 @@ document.getElementById('inventory-close').onclick = () => { document.getElement
 /* =========================================================
    9) RENDER LOOP
    ========================================================= */
+function applyShadows() {
+  scene.traverse(o => {
+    if (!o.isMesh) return;
+    o.receiveShadow = true;
+    const q = o.geometry && o.geometry.parameters;
+    o.castShadow = !o.isInstancedMesh && !(o.material && o.material.transparent) && !['PlaneGeometry', 'ShapeGeometry', 'CircleGeometry'].includes(o.geometry.type) && !(q && q.height !== undefined && q.height < 0.3);
+  });
+}
+applyShadows();
 const clock = new THREE.Clock();
 function animate() {
   requestAnimationFrame(animate);
@@ -2390,6 +2800,9 @@ function animate() {
   Object.values(cars).forEach(c => { if (c.prop && c.occupiedBy && c.occupiedBy !== socket.id) c.prop.rotation.x += 0.6; });
   updateMovement();
   keralaTick(t);
+  const nowp = performance.now();
+  tickAvatar(myAvatar, nowp); if (chayaNpc) tickAvatar(chayaNpc, nowp); if (milkmaid) tickAvatar(milkmaid, nowp);
+  sun.position.set(myAvatar.position.x + 18, 40, myAvatar.position.z + 12); sun.target.position.set(myAvatar.position.x, 0, myAvatar.position.z);
   updateWaypointReadout();
   if (waypointBeacon.visible) waypointBeacon.position.y = 1.2 + Math.sin(t*3)*0.15;
   if (mapOpen) drawMap();
@@ -2398,6 +2811,7 @@ function animate() {
   Object.values(others).forEach(o => {
     o.group.position.lerp(new THREE.Vector3(o.target.x, o.target.y, o.target.z), 0.2);
     o.group.rotation.y = o.target.rotY;
+    tickAvatar(o.group, nowp);
   });
   Object.values(cars).forEach(c => {
     if (c.target && c.occupiedBy && c.occupiedBy !== socket.id) {
