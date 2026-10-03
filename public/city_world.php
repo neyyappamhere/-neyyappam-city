@@ -3199,7 +3199,7 @@ function renderPrivSize() {
 }
 function openPrivate(view, roomId) {
   if (!inGame()) { showToast('Enter the city first'); return; }
-  if (!requireLogin('private', () => openPrivate(view, roomId))) return;
+  if (!auth.loggedIn) { requireLogin('private', () => openPrivate(view, roomId)); return; }   // popup first; re-opens after a successful login
   socket.emit('privateConfig', (cfg) => { if (cfg && cfg.places) { PRIV_PLACES = cfg.places; PRIV_MAX = cfg.max || 5; renderPrivPlaces(); renderPrivSize(); } });
   renderPrivPlaces(); renderPrivSize();
   if (privRoom && privMine) { showReady(privMine); }
