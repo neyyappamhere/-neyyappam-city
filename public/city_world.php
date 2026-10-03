@@ -329,6 +329,44 @@
   .set-swatch.selected{ border-color:#fff; box-shadow:0 0 0 2px var(--pk); }
   .set-note{ font-size:.72em; color:var(--muted); margin:2px 0 0; }
   #stats-panel{ max-height:88vh; overflow-y:auto; }
+
+  /* ===== Phase 3: private voice rooms ===== */
+  #private-btn{ position:absolute; top:64px; left:462px; z-index:5; background:var(--card); color:var(--text); border:1px solid var(--border);
+    border-radius:24px; padding:9px 16px; font-weight:700; font-size:.82em; cursor:pointer; }
+  #private-overlay{ position:absolute; inset:0; z-index:22; display:none; align-items:center; justify-content:center; padding:12px; background:rgba(5,2,10,.78); }
+  #private-overlay.open{ display:flex; }
+  #private-panel{ background:var(--card); border:1px solid var(--border); border-radius:18px; padding:16px; width:min(94vw,440px); max-height:92vh; overflow-y:auto; box-shadow:0 20px 50px rgba(0,0,0,.6); }
+  #private-head{ display:flex; justify-content:space-between; align-items:center; font-weight:800; margin-bottom:6px; }
+  #private-head button{ background:none; border:none; color:var(--muted); font-size:1.1em; cursor:pointer; width:36px; height:36px; }
+  .priv-lbl{ font-size:.74em; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; margin:12px 0 6px; }
+  #priv-places{ display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .priv-place{ border:2px solid var(--border); background:var(--surface); color:var(--text); border-radius:14px; padding:12px 8px; font-weight:700; cursor:pointer; font-family:inherit; font-size:.85em; min-height:64px; }
+  .priv-place .em{ display:block; font-size:1.6em; margin-bottom:2px; }
+  .priv-place.selected{ border-color:var(--pk); background:linear-gradient(135deg,rgba(254,1,154,.35),rgba(155,93,229,.35)); }
+  #priv-friends{ display:flex; flex-direction:column; gap:6px; max-height:190px; overflow-y:auto; }
+  .priv-friend{ display:flex; align-items:center; gap:10px; padding:10px 12px; border:2px solid var(--border); border-radius:12px; background:var(--surface); cursor:pointer; min-height:46px; }
+  .priv-friend.selected{ border-color:var(--pk); }
+  .priv-friend b{ font-size:.9em; display:block; } .priv-friend span{ font-size:.74em; color:var(--muted); }
+  .priv-friend i{ margin-left:auto; color:var(--pk); display:none; } .priv-friend.selected i{ display:inline; }
+  #priv-empty{ font-size:.82em; color:var(--muted); padding:10px 2px; }
+  .priv-note{ font-size:.72em; color:var(--muted); margin:10px 0 0; line-height:1.45; }
+  #priv-start{ width:100%; margin-top:12px; padding:13px; min-height:46px; border:none; border-radius:12px; color:#fff; font-weight:800; font-size:.95em; cursor:pointer; font-family:inherit; background:linear-gradient(135deg,#FE019A,#9b5de5); }
+  #priv-start:disabled{ opacity:.45; cursor:not-allowed; }
+  #priv-refresh{ background:none; border:none; color:var(--pk); font-weight:700; font-size:.78em; cursor:pointer; float:right; font-family:inherit; }
+  #private-invite{ position:absolute; z-index:30; top:76px; left:50%; transform:translateX(-50%); display:none; width:min(92vw,380px); background:var(--card); border:2px solid var(--pk);
+    border-radius:16px; padding:14px; box-shadow:0 14px 40px rgba(254,1,154,.35); }
+  #private-invite.open{ display:block; }
+  #private-invite p{ margin:0 0 4px; font-size:.9em; } #private-invite small{ color:var(--muted); font-size:.74em; display:block; margin-bottom:10px; }
+  #private-invite .btns{ display:flex; gap:8px; }
+  #private-invite button{ flex:1; padding:11px; min-height:44px; border-radius:12px; border:none; font-weight:800; cursor:pointer; font-family:inherit; font-size:.9em; }
+  #pi-accept{ background:linear-gradient(135deg,#FE019A,#9b5de5); color:#fff; } #pi-decline{ background:var(--surface); color:var(--text); border:1px solid var(--border) !important; }
+  #private-bar{ position:absolute; z-index:15; top:112px; left:50%; transform:translateX(-50%); display:none; align-items:center; gap:8px; flex-wrap:wrap; justify-content:center;
+    max-width:min(94vw,520px); padding:8px 10px 8px 14px; border-radius:22px; background:linear-gradient(135deg,rgba(254,1,154,.92),rgba(155,93,229,.92)); color:#fff; font-size:.8em; font-weight:700; box-shadow:0 8px 24px rgba(0,0,0,.45); }
+  #private-bar.open{ display:flex; }
+  #private-bar button{ border:none; border-radius:16px; padding:8px 12px; min-height:36px; font-weight:800; cursor:pointer; font-family:inherit; font-size:.95em; background:rgba(255,255,255,.2); color:#fff; }
+  #private-bar button.leave{ background:#fff; color:#d90085; }
+  #priv-mod{ display:none; width:100%; text-align:center; background:rgba(0,0,0,.35); border-radius:12px; padding:5px 8px; font-size:.92em; }
+  @media (max-width:700px){ #private-btn{ top:294px; left:auto; right:14px; } #private-bar{ top:104px; } }
 </style>
 </head>
 <body>
@@ -393,6 +431,7 @@
 <button id="stats-btn"><i class="fa-solid fa-user"></i> Stats</button>
 <button id="shop-btn"><i class="fa-solid fa-store"></i> Shop</button>
 <button id="inventory-btn"><i class="fa-solid fa-bag-shopping"></i> Bag</button>
+<button id="private-btn"><i class="fa-solid fa-lock"></i> Private</button>
 
 <div id="toast-stack"></div>
 
@@ -544,6 +583,32 @@
   </div>
 </div>
 
+
+<div id="private-bar">
+  <span id="priv-title">🔒 Private</span>
+  <button type="button" id="priv-mute"><i class="fa-solid fa-microphone"></i> Mute</button>
+  <button type="button" class="leave" id="priv-leave"><i class="fa-solid fa-phone-slash"></i> Leave</button>
+  <div id="priv-mod">🛡️ A moderator has joined this room for safety</div>
+</div>
+
+<div id="private-invite" role="dialog" aria-live="polite">
+  <p id="pi-text">—</p>
+  <small>Only people inside can hear. Moderators may join visibly for safety.</small>
+  <div class="btns"><button type="button" id="pi-decline">Decline</button><button type="button" id="pi-accept">Join 🎤</button></div>
+</div>
+
+<div id="private-overlay">
+  <div id="private-panel">
+    <div id="private-head"><span>🔒 Private voice room</span><button type="button" id="private-close" aria-label="Close"><i class="fa-solid fa-xmark"></i></button></div>
+    <div class="priv-lbl">1 · Pick a place</div>
+    <div id="priv-places"></div>
+    <div class="priv-lbl">2 · Invite people <button type="button" id="priv-refresh">↻ Refresh</button></div>
+    <div id="priv-friends"></div>
+    <p class="priv-note">Only the people inside the room can hear each other. For everyone's safety, moderators can join a private room — you will always see a notice when one does. Voice is never recorded.</p>
+    <button type="button" id="priv-start" disabled>Start private call</button>
+  </div>
+</div>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="/socket.io/socket.io.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
@@ -676,7 +741,7 @@ function openLogin(why, after) {
 function closeLogin() { loginModal.classList.remove('open'); pendingAfterLogin = null; }
 function requireLogin(feature, after) {
   if (auth.loggedIn) { after && after(); return true; }
-  openLogin(feature === 'mic' ? '🎤 Log in to turn on your microphone.' : feature === 'chat' ? '💬 Log in to chat with other players.' : 'Log in to continue.', after);
+  openLogin(feature === 'mic' ? '🎤 Log in to turn on your microphone.' : feature === 'chat' ? '💬 Log in to chat with other players.' : feature === 'private' ? '🔒 Log in to start a private voice room.' : 'Log in to continue.', after);
   return false;
 }
 document.getElementById('login-close').onclick = closeLogin;
@@ -715,6 +780,7 @@ document.getElementById('account-action').onclick = async () => {
   try { await authCall('logout', {}); } catch (e) {}
   applyAuth(null);
   if (typeof socket !== 'undefined' && socket.connected && inGame()) socket.emit('deauth');
+  if (privRoom) cleanupPrivate();
   if (micOn) { micOn = false; paintVoiceBtns(); syncVoice(); }
   document.getElementById('balloon-val').textContent = '0';
   showToast('👋 Logged out');
@@ -2953,7 +3019,7 @@ async function connectVoice() {
 // Mic and Sound are independent: you can listen to others with your mic off. The voice room is joined only when either is on.
 function syncVoice() {
   voiceChain = voiceChain.then(async () => {
-    const want = (micOn || soundOn) && auth.loggedIn;   // the voice room is members-only
+    const want = (micOn || soundOn) && auth.loggedIn && !privRoom;   // members-only; paused while you are in a private room
     try {
       if (want && !lkRoom) await connectVoice();
       if (!want && lkRoom) { const r = lkRoom; lkRoom = null; await r.disconnect(); document.querySelectorAll('audio.lk-voice-audio').forEach(el => el.remove()); }
@@ -3075,6 +3141,142 @@ mapCanvas.addEventListener('click', (e) => {
   document.getElementById('map-overlay').style.display = 'none';
 });
 
+
+
+/* =========================================================
+   8) PRIVATE VOICE ROOMS
+   ========================================================= */
+const PRIV_PLACES = [
+  { id: 'happycup',  name: 'Happy Cup',      emoji: '☕' },
+  { id: 'sarovaram', name: 'Sarovaram Park', emoji: '🌳' },
+  { id: 'beach',     name: 'Beach',          emoji: '🏖️' },
+  { id: 'hugamug',   name: 'Hug a Mug',      emoji: '🫶' }
+];
+let privRoom = null, lkPriv = null, privConnecting = false, privMuted = false, privPlace = null, privTargets = new Set(), pendingInvite = null, inviteTimer = null, privMods = new Set();
+const privOverlay = document.getElementById('private-overlay');
+
+function renderPrivPlaces() {
+  const box = document.getElementById('priv-places'); box.innerHTML = '';
+  PRIV_PLACES.forEach(pl => {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'priv-place' + (privPlace === pl.id ? ' selected' : '');
+    b.innerHTML = '<span class="em">' + pl.emoji + '</span>' + pl.name;
+    b.onclick = () => { privPlace = pl.id; renderPrivPlaces(); updatePrivStart(); };
+    box.appendChild(b);
+  });
+}
+function onlineMembers() {
+  return Object.keys(others).filter(id => others[id].target && others[id].target.uid).map(id => ({ sid: id, name: others[id].name, username: others[id].username }));
+}
+function renderPrivFriends() {
+  const box = document.getElementById('priv-friends'); box.innerHTML = '';
+  const list = onlineMembers();
+  privTargets.forEach(sid => { if (!list.find(m => m.sid === sid)) privTargets.delete(sid); });
+  if (!list.length) { const d = document.createElement('div'); d.id = 'priv-empty'; d.textContent = 'No other logged-in members are online right now. Ask a friend to log in and enter the city, then tap Refresh.'; box.appendChild(d); }
+  list.forEach(m => {
+    const row = document.createElement('div'); row.className = 'priv-friend' + (privTargets.has(m.sid) ? ' selected' : '');
+    const t = document.createElement('div'); const b = document.createElement('b'); b.textContent = m.name; const sp = document.createElement('span'); sp.textContent = m.username ? '@' + m.username : '';
+    t.appendChild(b); t.appendChild(sp); row.appendChild(t); row.insertAdjacentHTML('beforeend', '<i class="fa-solid fa-circle-check"></i>');
+    row.onclick = () => { if (privTargets.has(m.sid)) privTargets.delete(m.sid); else if (privTargets.size < 3) privTargets.add(m.sid); else showToast('A private room fits up to 4 people'); renderPrivFriends(); updatePrivStart(); };
+    box.appendChild(row);
+  });
+  updatePrivStart();
+}
+function updatePrivStart() { document.getElementById('priv-start').disabled = !(privPlace && privTargets.size > 0); }
+function openPrivate() {
+  if (!inGame()) { showToast('Enter the city first'); return; }
+  if (!requireLogin('private', openPrivate)) return;
+  if (privRoom) { showToast('You are already in a private room'); return; }
+  privTargets.clear(); renderPrivPlaces(); renderPrivFriends(); privOverlay.classList.add('open');
+}
+document.getElementById('private-btn').onclick = openPrivate;
+document.getElementById('private-close').onclick = () => privOverlay.classList.remove('open');
+privOverlay.addEventListener('mousedown', e => { if (e.target === privOverlay) privOverlay.classList.remove('open'); });
+document.getElementById('priv-refresh').onclick = renderPrivFriends;
+document.getElementById('priv-start').onclick = () => {
+  const btn = document.getElementById('priv-start'); btn.disabled = true;
+  socket.emit('privateInvite', { place: privPlace, targets: [...privTargets] }, (r) => {
+    if (r && r.ok) { privOverlay.classList.remove('open'); showToast('📨 Invite sent — waiting for them to join'); }
+    else { showToast((r && r.error) || 'Could not start the room'); updatePrivStart(); }
+  });
+};
+
+// ---- incoming invite ----
+function hideInvite() { document.getElementById('private-invite').classList.remove('open'); clearTimeout(inviteTimer); pendingInvite = null; }
+socket.on('privateInvited', (inv) => {
+  if (!auth.loggedIn || privRoom) { socket.emit('privateRespond', { roomId: inv.roomId, accept: false }); return; }
+  pendingInvite = inv;
+  document.getElementById('pi-text').textContent = inv.emoji + ' ' + inv.from.name + ' invited you to talk privately at ' + inv.placeName;
+  document.getElementById('private-invite').classList.add('open');
+  clearTimeout(inviteTimer); inviteTimer = setTimeout(hideInvite, 60000);
+});
+socket.on('privateInviteCancelled', ({ roomId }) => { if (pendingInvite && pendingInvite.roomId === roomId) hideInvite(); });
+document.getElementById('pi-accept').onclick = () => { if (!pendingInvite) return; const id = pendingInvite.roomId; hideInvite(); socket.emit('privateRespond', { roomId: id, accept: true }); };
+document.getElementById('pi-decline').onclick = () => { if (!pendingInvite) return; const id = pendingInvite.roomId; hideInvite(); socket.emit('privateRespond', { roomId: id, accept: false }); };
+socket.on('privateDeclined', ({ name }) => showToast('🙏 ' + name + ' declined'));
+
+// ---- inside a room ----
+function paintPrivBar() {
+  const bar = document.getElementById('private-bar');
+  if (!privRoom) { bar.classList.remove('open'); return; }
+  const names = privRoom.members.map(m => m.name).join(', ');
+  document.getElementById('priv-title').textContent = '🔒 ' + privRoom.emoji + ' ' + privRoom.placeName + ' · ' + (privRoom.members.length < 2 ? 'waiting for others…' : names);
+  document.getElementById('priv-mod').style.display = privMods.size ? 'block' : 'none';
+  const mb = document.getElementById('priv-mute');
+  mb.innerHTML = privMuted ? '<i class="fa-solid fa-microphone-slash"></i> Unmute' : '<i class="fa-solid fa-microphone"></i> Mute';
+  bar.classList.add('open');
+}
+socket.on('privateRoomState', (room) => {
+  const first = !privRoom;
+  privRoom = room;
+  if (first) {
+    if (micOn) { micOn = false; paintVoiceBtns(); }       // the private room has its own mic; public mic goes off
+    syncVoice();                                           // leaves the public voice room
+    connectPrivate();
+  }
+  paintPrivBar();
+});
+async function connectPrivate() {
+  if (lkPriv || privConnecting || !privRoom) return;
+  privConnecting = true;
+  try {
+    const r = await new Promise(res => socket.emit('privateJoinToken', res));
+    if (!r || !r.ok) throw new Error((r && r.error) || 'no voice token');
+    if (!privRoom) return;
+    const room = new LivekitClient.Room({ audioCaptureDefaults: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+    room.on(LivekitClient.RoomEvent.TrackSubscribed, (track) => {
+      if (track.kind === 'audio') { const el = track.attach(); el.classList.add('lk-priv-audio'); el.style.display = 'none'; document.body.appendChild(el); }
+    });
+    room.on(LivekitClient.RoomEvent.TrackUnsubscribed, (track) => { track.detach().forEach(el => el.remove()); });
+    const isMod = (p) => String(p.identity || '').startsWith('mod-');
+    room.on(LivekitClient.RoomEvent.ParticipantConnected, (p) => { if (isMod(p)) { privMods.add(p.identity); showToast('🛡️ A moderator joined this private room'); paintPrivBar(); } });
+    room.on(LivekitClient.RoomEvent.ParticipantDisconnected, (p) => { if (isMod(p)) { privMods.delete(p.identity); paintPrivBar(); } });
+    await room.connect(r.url, r.token);
+    lkPriv = room;
+    room.remoteParticipants.forEach(p => { if (isMod(p)) privMods.add(p.identity); });
+    try { await room.startAudio(); } catch (e) {}
+    try { await room.localParticipant.setMicrophoneEnabled(!privMuted); } catch (e) { showToast('🎤 Allow the microphone to talk in the private room'); }
+    paintPrivBar();
+  } catch (e) {
+    showToast('Private voice unavailable: ' + (e.message || e));
+  } finally { privConnecting = false; }
+}
+function cleanupPrivate() {
+  const r = lkPriv; lkPriv = null; privRoom = null; privMods.clear(); privMuted = false;
+  if (r) { try { r.disconnect(); } catch (e) {} }
+  document.querySelectorAll('audio.lk-priv-audio').forEach(el => el.remove());
+  paintPrivBar();
+  syncVoice();                                             // public voice resumes if sound/mic were on
+}
+socket.on('privateRoomClosed', ({ reason }) => {
+  const msg = { ended: 'The private room ended', no_answer: 'No one joined the private room', declined: 'The invite was declined', closed_by_admin: 'A moderator closed this private room', logout: 'You were logged out' }[reason] || 'The private room closed';
+  cleanupPrivate(); showToast('🔒 ' + msg);
+});
+document.getElementById('priv-leave').onclick = () => { socket.emit('privateLeave'); cleanupPrivate(); showToast('You left the private room'); };
+document.getElementById('priv-mute').onclick = async () => {
+  privMuted = !privMuted;
+  if (lkPriv) { try { await lkPriv.localParticipant.setMicrophoneEnabled(!privMuted); } catch (e) {} }
+  paintPrivBar();
+};
 
 /* =========================================================
    Character settings (inside the Stats panel). Name is locked to the account.
