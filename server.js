@@ -32,7 +32,7 @@ const io = new Server(server, {
 // otherwise some browsers would try to download it instead of rendering it.
 app.use(express.static('public', {
   setHeaders: (res, filePath) => {
-    if (filePath.endsWith('.php')) res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    if (filePath.endsWith('.php')) { res.setHeader('Content-Type', 'text/html; charset=utf-8'); res.setHeader('Cache-Control', 'no-cache'); }   // always revalidate so updates reach phones immediately
   }
 }));
 
@@ -72,6 +72,7 @@ app.get('/livekit-token', async (req, res) => {
 
 app.get(['/', '/city_world.php'], (req, res) => {
   res.type('html');
+  res.setHeader('Cache-Control', 'no-cache');
   res.sendFile(__dirname + '/public/city_world.php');
 });
 
@@ -93,7 +94,8 @@ function verifyCityToken(token) {
   try {
     const d = JSON.parse(b64urlDecode(payload).toString('utf8'));
     if (!d || !Number.isInteger(d.uid) || d.uid <= 0 || !(d.exp > Date.now() / 1000)) return null;
-    return { uid: d.uid, name: String(d.name || 'Player').slice(0, 24), balloons: Math.max(0, parseInt(d.bal, 10) || 0) };
+    const username = String(d.name || 'player').slice(0, 24);
+    return { uid: d.uid, name: String(d.disp || username).slice(0, 24), username, balloons: Math.max(0, parseInt(d.bal, 10) || 0) };
   } catch (e) { return null; }
 }
 
@@ -455,6 +457,7 @@ io.on('connection', (socket) => {
     players[socket.id] = {
       id: socket.id,
       name: auth ? auth.name : (String(data.name || 'Guest').slice(0, 24)),
+      username: auth ? auth.username : null,
       gender: role === 'chayakkaran' ? 'male' : role === 'karavakkari' ? 'female' : (['male', 'female', 'other'].includes(data.gender) ? data.gender : 'other'),
       role,
       noKiss: false,
@@ -473,7 +476,7 @@ io.on('connection', (socket) => {
     };
     if (role) roles[role] = socket.id;
     socket.emit('roleResult', { role, denied: !!wantRole && !role });
-    socket.emit('authState', { loggedIn: !!auth, name: auth ? auth.name : null, balloons: players[socket.id].balloons });
+    socket.emit('authState', { loggedIn: !!auth, name: auth ? auth.name : null, username: auth ? auth.username : null, balloons: players[socket.id].balloons });
     io.emit('roleState', roleStatePayload());
     socket.emit('currentPlayers', players);
     socket.emit('currentCars', occupiedCars); // let the newcomer know which cars are already taken
@@ -490,16 +493,25 @@ io.on('connection', (socket) => {
     const a = verifyCityToken(token);
     if (!a) { socket.emit('authState', { loggedIn: false, error: 'bad_token' }); return; }
     const wasGuest = !p.uid;
-    p.uid = a.uid; p.name = a.name;
+    p.uid = a.uid; p.name = a.name; p.username = a.username;
     if (wasGuest) p.balloons = a.balloons;      // keep the live balance on a token refresh
-    socket.emit('authState', { loggedIn: true, name: p.name, balloons: p.balloons, upgraded: wasGuest });
-    io.emit('playerRenamed', { id: socket.id, name: p.name });
+    socket.emit('authState', { loggedIn: true, name: p.name, username: p.username, balloons: p.balloons, upgraded: wasGuest });
+    io.emit('playerRenamed', { id: socket.id, name: p.name, username: p.username });
   });
   socket.on('deauth', () => {
     const p = players[socket.id]; if (!p) return;
-    p.uid = null; p.balloons = 0; p.name = 'Guest';
+    p.uid = null; p.username = null; p.balloons = 0; p.name = 'Guest';
     socket.emit('authState', { loggedIn: false, loggedOut: true, balloons: 0 });
     io.emit('playerRenamed', { id: socket.id, name: p.name });
+  });
+
+  // Change look in game settings (the NAME can never be changed here - it comes from the account).
+  socket.on('updateLook', (d = {}) => {
+    const p = players[socket.id]; if (!p) return;
+    if (!p.role && ['male', 'female', 'other'].includes(d.gender)) p.gender = d.gender;   // tea-shop roles keep their fixed gender
+    if (/^#?[0-9a-fA-F]{6}$/.test(d.outfitColor || '')) p.outfitColor = d.outfitColor;
+    if (['short', 'pony', 'bandana'].includes(d.hairStyle)) p.hairStyle = d.hairStyle;
+    socket.broadcast.emit('playerLook', { id: socket.id, gender: p.gender, outfitColor: p.outfitColor, hairStyle: p.hairStyle });
   });
 
   socket.on('move', (pos) => {
