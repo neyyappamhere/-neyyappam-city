@@ -330,36 +330,36 @@
   .set-note{ font-size:.72em; color:var(--muted); margin:2px 0 0; }
   #stats-panel{ max-height:88vh; overflow-y:auto; }
 
-  /* ===== Phase 3: private voice rooms ===== */
+  /* ===== Phase 3: private voice rooms (room ID + passcode) ===== */
   #private-btn{ position:absolute; top:64px; left:462px; z-index:5; background:var(--card); color:var(--text); border:1px solid var(--border);
     border-radius:24px; padding:9px 16px; font-weight:700; font-size:.82em; cursor:pointer; }
   #private-overlay{ position:absolute; inset:0; z-index:22; display:none; align-items:center; justify-content:center; padding:12px; background:rgba(5,2,10,.78); }
   #private-overlay.open{ display:flex; }
   #private-panel{ background:var(--card); border:1px solid var(--border); border-radius:18px; padding:16px; width:min(94vw,440px); max-height:92vh; overflow-y:auto; box-shadow:0 20px 50px rgba(0,0,0,.6); }
-  #private-head{ display:flex; justify-content:space-between; align-items:center; font-weight:800; margin-bottom:6px; }
+  #private-head{ display:flex; justify-content:space-between; align-items:center; font-weight:800; margin-bottom:8px; }
   #private-head button{ background:none; border:none; color:var(--muted); font-size:1.1em; cursor:pointer; width:36px; height:36px; }
+  .priv-tabs{ display:flex; gap:6px; margin-bottom:6px; }
+  .priv-tabs button{ flex:1; padding:10px; min-height:42px; border-radius:12px; border:2px solid var(--border); background:var(--surface); color:var(--text); font-weight:800; cursor:pointer; font-family:inherit; font-size:.85em; }
+  .priv-tabs button.on{ border-color:var(--pk); background:linear-gradient(135deg,rgba(254,1,154,.35),rgba(155,93,229,.35)); }
   .priv-lbl{ font-size:.74em; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; margin:12px 0 6px; }
   #priv-places{ display:grid; grid-template-columns:1fr 1fr; gap:8px; }
   .priv-place{ border:2px solid var(--border); background:var(--surface); color:var(--text); border-radius:14px; padding:12px 8px; font-weight:700; cursor:pointer; font-family:inherit; font-size:.85em; min-height:64px; }
   .priv-place .em{ display:block; font-size:1.6em; margin-bottom:2px; }
   .priv-place.selected{ border-color:var(--pk); background:linear-gradient(135deg,rgba(254,1,154,.35),rgba(155,93,229,.35)); }
-  #priv-friends{ display:flex; flex-direction:column; gap:6px; max-height:190px; overflow-y:auto; }
-  .priv-friend{ display:flex; align-items:center; gap:10px; padding:10px 12px; border:2px solid var(--border); border-radius:12px; background:var(--surface); cursor:pointer; min-height:46px; }
-  .priv-friend.selected{ border-color:var(--pk); }
-  .priv-friend b{ font-size:.9em; display:block; } .priv-friend span{ font-size:.74em; color:var(--muted); }
-  .priv-friend i{ margin-left:auto; color:var(--pk); display:none; } .priv-friend.selected i{ display:inline; }
-  #priv-empty{ font-size:.82em; color:var(--muted); padding:10px 2px; }
+  #priv-size{ display:flex; gap:6px; }
+  #priv-size button{ flex:1; min-height:42px; border-radius:12px; border:2px solid var(--border); background:var(--surface); color:var(--text); font-weight:800; cursor:pointer; font-family:inherit; }
+  #priv-size button.selected{ border-color:var(--pk); background:linear-gradient(135deg,#FE019A,#9b5de5); color:#fff; }
   .priv-note{ font-size:.72em; color:var(--muted); margin:10px 0 0; line-height:1.45; }
-  #priv-start{ width:100%; margin-top:12px; padding:13px; min-height:46px; border:none; border-radius:12px; color:#fff; font-weight:800; font-size:.95em; cursor:pointer; font-family:inherit; background:linear-gradient(135deg,#FE019A,#9b5de5); }
-  #priv-start:disabled{ opacity:.45; cursor:not-allowed; }
-  #priv-refresh{ background:none; border:none; color:var(--pk); font-weight:700; font-size:.78em; cursor:pointer; float:right; font-family:inherit; }
-  #private-invite{ position:absolute; z-index:30; top:76px; left:50%; transform:translateX(-50%); display:none; width:min(92vw,380px); background:var(--card); border:2px solid var(--pk);
-    border-radius:16px; padding:14px; box-shadow:0 14px 40px rgba(254,1,154,.35); }
-  #private-invite.open{ display:block; }
-  #private-invite p{ margin:0 0 4px; font-size:.9em; } #private-invite small{ color:var(--muted); font-size:.74em; display:block; margin-bottom:10px; }
-  #private-invite .btns{ display:flex; gap:8px; }
-  #private-invite button{ flex:1; padding:11px; min-height:44px; border-radius:12px; border:none; font-weight:800; cursor:pointer; font-family:inherit; font-size:.9em; }
-  #pi-accept{ background:linear-gradient(135deg,#FE019A,#9b5de5); color:#fff; } #pi-decline{ background:var(--surface); color:var(--text); border:1px solid var(--border) !important; }
+  .priv-main{ width:100%; margin-top:12px; padding:13px; min-height:46px; border:none; border-radius:12px; color:#fff; font-weight:800; font-size:.95em; cursor:pointer; font-family:inherit; background:linear-gradient(135deg,#FE019A,#9b5de5); }
+  .priv-main:disabled{ opacity:.45; cursor:not-allowed; }
+  .priv-code{ background:var(--surface); border:2px dashed var(--pk); border-radius:14px; padding:10px 14px; margin-top:8px; text-align:center; }
+  .priv-code small{ display:block; color:var(--muted); font-size:.7em; text-transform:uppercase; letter-spacing:.05em; }
+  .priv-code b{ font-size:1.7em; letter-spacing:.18em; font-family:'Space Grotesk',monospace; }
+  .priv-row2{ display:flex; gap:8px; margin-top:10px; } .priv-row2 .priv-main{ margin-top:0; font-size:.82em; }
+  .priv-link{ word-break:break-all; font-size:.74em; color:var(--muted); margin-top:8px; text-align:center; }
+  #pv-join input{ width:100%; padding:13px 14px; border:2px solid var(--border); border-radius:12px; background:var(--surface); color:var(--text); font-size:16px; font-family:inherit; outline:none; margin-top:6px; text-transform:uppercase; letter-spacing:.12em; font-weight:700; }
+  #pv-join input#pj-pass{ letter-spacing:.3em; } #pv-join input:focus{ border-color:var(--pk); }
+  #pj-found{ margin-top:8px; font-size:.86em; font-weight:700; text-align:center; min-height:1.2em; }
   #private-bar{ position:absolute; z-index:15; top:112px; left:50%; transform:translateX(-50%); display:none; align-items:center; gap:8px; flex-wrap:wrap; justify-content:center;
     max-width:min(94vw,520px); padding:8px 10px 8px 14px; border-radius:22px; background:linear-gradient(135deg,rgba(254,1,154,.92),rgba(155,93,229,.92)); color:#fff; font-size:.8em; font-weight:700; box-shadow:0 8px 24px rgba(0,0,0,.45); }
   #private-bar.open{ display:flex; }
@@ -586,26 +586,47 @@
 
 <div id="private-bar">
   <span id="priv-title">🔒 Private</span>
+  <button type="button" id="priv-info"><i class="fa-solid fa-share-nodes"></i> Invite</button>
   <button type="button" id="priv-mute"><i class="fa-solid fa-microphone"></i> Mute</button>
   <button type="button" class="leave" id="priv-leave"><i class="fa-solid fa-phone-slash"></i> Leave</button>
   <div id="priv-mod">🛡️ A moderator has joined this room for safety</div>
 </div>
 
-<div id="private-invite" role="dialog" aria-live="polite">
-  <p id="pi-text">—</p>
-  <small>Only people inside can hear. Moderators may join visibly for safety.</small>
-  <div class="btns"><button type="button" id="pi-decline">Decline</button><button type="button" id="pi-accept">Join 🎤</button></div>
-</div>
-
 <div id="private-overlay">
   <div id="private-panel">
     <div id="private-head"><span>🔒 Private voice room</span><button type="button" id="private-close" aria-label="Close"><i class="fa-solid fa-xmark"></i></button></div>
-    <div class="priv-lbl">1 · Pick a place</div>
-    <div id="priv-places"></div>
-    <div class="priv-lbl">2 · Invite people <button type="button" id="priv-refresh">↻ Refresh</button></div>
-    <div id="priv-friends"></div>
-    <p class="priv-note">Only the people inside the room can hear each other. For everyone's safety, moderators can join a private room — you will always see a notice when one does. Voice is never recorded.</p>
-    <button type="button" id="priv-start" disabled>Start private call</button>
+    <div class="priv-tabs"><button type="button" id="ptab-create" class="on">Create room</button><button type="button" id="ptab-join">Join room</button></div>
+
+    <div id="pv-create">
+      <div class="priv-lbl">1 · Pick a place</div>
+      <div id="priv-places"></div>
+      <div class="priv-lbl">2 · How many people (including you)?</div>
+      <div id="priv-size"></div>
+      <button type="button" class="priv-main" id="priv-start" disabled>Create private room</button>
+    </div>
+
+    <div id="pv-ready" style="display:none">
+      <div class="priv-lbl" id="pr-title">Your room is ready</div>
+      <div class="priv-code"><small>Room ID</small><b id="pr-id">—</b></div>
+      <div class="priv-code"><small>Passcode</small><b id="pr-pass">—</b></div>
+      <div class="priv-link" id="pr-link"></div>
+      <div class="priv-row2">
+        <button type="button" class="priv-main" id="pr-copy-invite">Share invite</button>
+        <button type="button" class="priv-main" id="pr-copy-link">Copy link</button>
+      </div>
+      <p class="priv-note">Send the link (or Room ID) and the passcode to your partners. They need the passcode to get in.</p>
+    </div>
+
+    <div id="pv-join" style="display:none">
+      <div class="priv-lbl">Room ID</div>
+      <div class="priv-row2" style="margin-top:0"><input id="pj-id" placeholder="e.g. K7M2QP" maxlength="8" autocomplete="off" autocapitalize="characters"><button type="button" class="priv-main" id="pj-find" style="max-width:110px">Search</button></div>
+      <div id="pj-found"></div>
+      <div class="priv-lbl">Passcode</div>
+      <input id="pj-pass" placeholder="6-digit passcode" maxlength="6" inputmode="numeric" autocomplete="off">
+      <button type="button" class="priv-main" id="pj-join" disabled>Join room</button>
+    </div>
+
+    <p class="priv-note">Only people inside the room can hear each other. For safety and legal reasons moderators can enter a private room — you will always see a notice when one does. Voice is never recorded.</p>
   </div>
 </div>
 
@@ -3144,85 +3165,117 @@ mapCanvas.addEventListener('click', (e) => {
 
 
 /* =========================================================
-   8) PRIVATE VOICE ROOMS
+   8) PRIVATE VOICE ROOMS — create (Room ID + passcode + share link) / join (ID or link + passcode)
    ========================================================= */
-const PRIV_PLACES = [
-  { id: 'happycup',  name: 'Happy Cup',      emoji: '☕' },
-  { id: 'sarovaram', name: 'Sarovaram Park', emoji: '🌳' },
-  { id: 'beach',     name: 'Beach',          emoji: '🏖️' },
-  { id: 'hugamug',   name: 'Hug a Mug',      emoji: '🫶' }
-];
-let privRoom = null, lkPriv = null, privConnecting = false, privMuted = false, privPlace = null, privTargets = new Set(), pendingInvite = null, inviteTimer = null, privMods = new Set();
+let PRIV_PLACES = [{ id: 'happycup', name: 'Happy Cup', emoji: '☕' }, { id: 'sarovaram', name: 'Sarovaram Park', emoji: '🌳' }, { id: 'beach', name: 'Beach', emoji: '🏖️' }, { id: 'hugamug', name: 'Hug a Mug', emoji: '🫶' }];
+let PRIV_MAX = 5;
+let privRoom = null, lkPriv = null, privConnecting = false, privMuted = false, privPlace = null, privSize = 2, privMods = new Set(), privMine = null, privFound = null;
 const privOverlay = document.getElementById('private-overlay');
+const $p = (id) => document.getElementById(id);
+const linkRoom = (params.get('room') || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
+const roomLink = (id) => location.origin + '/?room=' + id;
 
+function privTab(which) {
+  $p('ptab-create').classList.toggle('on', which !== 'join'); $p('ptab-join').classList.toggle('on', which === 'join');
+  $p('pv-create').style.display = (which === 'create') ? 'block' : 'none';
+  $p('pv-ready').style.display = (which === 'ready') ? 'block' : 'none';
+  $p('pv-join').style.display = (which === 'join') ? 'block' : 'none';
+}
 function renderPrivPlaces() {
-  const box = document.getElementById('priv-places'); box.innerHTML = '';
+  const box = $p('priv-places'); box.innerHTML = '';
   PRIV_PLACES.forEach(pl => {
     const b = document.createElement('button'); b.type = 'button'; b.className = 'priv-place' + (privPlace === pl.id ? ' selected' : '');
-    b.innerHTML = '<span class="em">' + pl.emoji + '</span>' + pl.name;
-    b.onclick = () => { privPlace = pl.id; renderPrivPlaces(); updatePrivStart(); };
+    const em = document.createElement('span'); em.className = 'em'; em.textContent = pl.emoji; b.appendChild(em); b.appendChild(document.createTextNode(pl.name));
+    b.onclick = () => { privPlace = pl.id; renderPrivPlaces(); $p('priv-start').disabled = false; };
     box.appendChild(b);
   });
 }
-function onlineMembers() {
-  return Object.keys(others).filter(id => others[id].target && others[id].target.uid).map(id => ({ sid: id, name: others[id].name, username: others[id].username }));
+function renderPrivSize() {
+  const box = $p('priv-size'); box.innerHTML = '';
+  for (let n = 2; n <= PRIV_MAX; n++) {
+    const b = document.createElement('button'); b.type = 'button'; b.textContent = n; b.className = privSize === n ? 'selected' : '';
+    b.onclick = () => { privSize = n; renderPrivSize(); }; box.appendChild(b);
+  }
 }
-function renderPrivFriends() {
-  const box = document.getElementById('priv-friends'); box.innerHTML = '';
-  const list = onlineMembers();
-  privTargets.forEach(sid => { if (!list.find(m => m.sid === sid)) privTargets.delete(sid); });
-  if (!list.length) { const d = document.createElement('div'); d.id = 'priv-empty'; d.textContent = 'No other logged-in members are online right now. Ask a friend to log in and enter the city, then tap Refresh.'; box.appendChild(d); }
-  list.forEach(m => {
-    const row = document.createElement('div'); row.className = 'priv-friend' + (privTargets.has(m.sid) ? ' selected' : '');
-    const t = document.createElement('div'); const b = document.createElement('b'); b.textContent = m.name; const sp = document.createElement('span'); sp.textContent = m.username ? '@' + m.username : '';
-    t.appendChild(b); t.appendChild(sp); row.appendChild(t); row.insertAdjacentHTML('beforeend', '<i class="fa-solid fa-circle-check"></i>');
-    row.onclick = () => { if (privTargets.has(m.sid)) privTargets.delete(m.sid); else if (privTargets.size < 3) privTargets.add(m.sid); else showToast('A private room fits up to 4 people'); renderPrivFriends(); updatePrivStart(); };
-    box.appendChild(row);
-  });
-  updatePrivStart();
-}
-function updatePrivStart() { document.getElementById('priv-start').disabled = !(privPlace && privTargets.size > 0); }
-function openPrivate() {
+function openPrivate(view, roomId) {
   if (!inGame()) { showToast('Enter the city first'); return; }
-  if (!requireLogin('private', openPrivate)) return;
-  if (privRoom) { showToast('You are already in a private room'); return; }
-  privTargets.clear(); renderPrivPlaces(); renderPrivFriends(); privOverlay.classList.add('open');
+  if (!requireLogin('private', () => openPrivate(view, roomId))) return;
+  socket.emit('privateConfig', (cfg) => { if (cfg && cfg.places) { PRIV_PLACES = cfg.places; PRIV_MAX = cfg.max || 5; renderPrivPlaces(); renderPrivSize(); } });
+  renderPrivPlaces(); renderPrivSize();
+  if (privRoom && privMine) { showReady(privMine); }
+  else if (privRoom) { showToast('You are already in a private room'); return; }
+  else if (view === 'join') { privTab('join'); $p('pj-id').value = roomId || ''; $p('pj-pass').value = ''; $p('pj-found').textContent = ''; $p('pj-join').disabled = true; privFound = null; if (roomId) findRoom(); }
+  else privTab('create');
+  privOverlay.classList.add('open');
 }
-document.getElementById('private-btn').onclick = openPrivate;
-document.getElementById('private-close').onclick = () => privOverlay.classList.remove('open');
+$p('private-btn').onclick = () => openPrivate('create');
+$p('private-close').onclick = () => privOverlay.classList.remove('open');
 privOverlay.addEventListener('mousedown', e => { if (e.target === privOverlay) privOverlay.classList.remove('open'); });
-document.getElementById('priv-refresh').onclick = renderPrivFriends;
-document.getElementById('priv-start').onclick = () => {
-  const btn = document.getElementById('priv-start'); btn.disabled = true;
-  socket.emit('privateInvite', { place: privPlace, targets: [...privTargets] }, (r) => {
-    if (r && r.ok) { privOverlay.classList.remove('open'); showToast('📨 Invite sent — waiting for them to join'); }
-    else { showToast((r && r.error) || 'Could not start the room'); updatePrivStart(); }
+$p('ptab-create').onclick = () => { if (privRoom && privMine) showReady(privMine); else if (!privRoom) privTab('create'); };
+$p('ptab-join').onclick = () => { if (privRoom) { showToast('Leave your current room to join another'); return; } privTab('join'); };
+
+// ---- create ----
+$p('priv-start').onclick = () => {
+  const btn = $p('priv-start'); btn.disabled = true;
+  socket.emit('privateCreate', { place: privPlace, capacity: privSize }, (r) => {
+    if (r && r.ok) { privMine = r; showReady(r); }
+    else { showToast((r && r.error) || 'Could not create the room'); btn.disabled = false; }
   });
 };
+function showReady(r) {
+  $p('pr-title').textContent = r.emoji + ' ' + r.placeName + ' · up to ' + r.capacity + ' people';
+  $p('pr-id').textContent = r.roomId; $p('pr-pass').textContent = r.passcode; $p('pr-link').textContent = roomLink(r.roomId);
+  privTab('ready');
+}
+function inviteText(r) { return '🔒 Join my private voice room on Neyyappam City!\n' + r.emoji + ' ' + r.placeName + '\nRoom ID: ' + r.roomId + '\nPasscode: ' + r.passcode + '\nLink: ' + roomLink(r.roomId); }
+async function copyText(t, okMsg) {
+  try { await navigator.clipboard.writeText(t); showToast(okMsg); }
+  catch (e) { const ta = document.createElement('textarea'); ta.value = t; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); showToast(okMsg); } catch (x) { showToast('Copy failed — select the text manually'); } ta.remove(); }
+}
+$p('pr-copy-invite').onclick = async () => {
+  if (!privMine) return; const text = inviteText(privMine);
+  if (navigator.share) { try { await navigator.share({ title: 'Private room', text }); return; } catch (e) { if (e && e.name === 'AbortError') return; } }
+  copyText(text, '📋 Invite copied — paste it to your partner');
+};
+$p('pr-copy-link').onclick = () => { if (privMine) copyText(roomLink(privMine.roomId), '🔗 Link copied (they still need the passcode)'); };
+$p('priv-info').onclick = () => { if (privMine) { showReady(privMine); privOverlay.classList.add('open'); } else showToast('Room ID: ' + (privRoom ? privRoom.id : '—')); };
 
-// ---- incoming invite ----
-function hideInvite() { document.getElementById('private-invite').classList.remove('open'); clearTimeout(inviteTimer); pendingInvite = null; }
-socket.on('privateInvited', (inv) => {
-  if (!auth.loggedIn || privRoom) { socket.emit('privateRespond', { roomId: inv.roomId, accept: false }); return; }
-  pendingInvite = inv;
-  document.getElementById('pi-text').textContent = inv.emoji + ' ' + inv.from.name + ' invited you to talk privately at ' + inv.placeName;
-  document.getElementById('private-invite').classList.add('open');
-  clearTimeout(inviteTimer); inviteTimer = setTimeout(hideInvite, 60000);
-});
-socket.on('privateInviteCancelled', ({ roomId }) => { if (pendingInvite && pendingInvite.roomId === roomId) hideInvite(); });
-document.getElementById('pi-accept').onclick = () => { if (!pendingInvite) return; const id = pendingInvite.roomId; hideInvite(); socket.emit('privateRespond', { roomId: id, accept: true }); };
-document.getElementById('pi-decline').onclick = () => { if (!pendingInvite) return; const id = pendingInvite.roomId; hideInvite(); socket.emit('privateRespond', { roomId: id, accept: false }); };
-socket.on('privateDeclined', ({ name }) => showToast('🙏 ' + name + ' declined'));
+// ---- join (search by ID, then passcode) ----
+function findRoom() {
+  const id = $p('pj-id').value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (id.length < 4) { $p('pj-found').textContent = 'Enter the Room ID'; return; }
+  $p('pj-found').textContent = 'Searching…'; privFound = null; $p('pj-join').disabled = true;
+  socket.emit('privateLookup', { roomId: id }, (r) => {
+    if (r && r.ok) {
+      privFound = r.roomId;
+      $p('pj-found').textContent = r.emoji + ' ' + r.placeName + ' — ' + r.count + '/' + r.capacity + ' inside' + (r.full ? ' (full)' : '');
+      $p('pj-join').disabled = !!r.full; $p('pj-pass').focus();
+    } else { $p('pj-found').textContent = '❌ ' + ((r && r.error) || 'Room not found'); }
+  });
+}
+$p('pj-find').onclick = findRoom;
+$p('pj-id').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); findRoom(); } });
+$p('pj-pass').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $p('pj-join').click(); } });
+$p('pj-join').onclick = () => {
+  if (!privFound) { findRoom(); return; }
+  const btn = $p('pj-join'); btn.disabled = true;
+  socket.emit('privateJoin', { roomId: privFound, passcode: $p('pj-pass').value }, (r) => {
+    if (r && r.ok) { privOverlay.classList.remove('open'); $p('pj-pass').value = ''; showToast('🔒 You joined the private room'); }
+    else { $p('pj-found').textContent = '❌ ' + ((r && r.error) || 'Could not join'); btn.disabled = false; $p('pj-pass').select(); }
+  });
+};
+// opened from a shared link (?room=ID): once you are in the city, jump to the Join screen
+if (linkRoom) { const t = setInterval(() => { if (inGame()) { clearInterval(t); openPrivate('join', linkRoom); } }, 600); }
 
 // ---- inside a room ----
 function paintPrivBar() {
-  const bar = document.getElementById('private-bar');
+  const bar = $p('private-bar');
   if (!privRoom) { bar.classList.remove('open'); return; }
   const names = privRoom.members.map(m => m.name).join(', ');
-  document.getElementById('priv-title').textContent = '🔒 ' + privRoom.emoji + ' ' + privRoom.placeName + ' · ' + (privRoom.members.length < 2 ? 'waiting for others…' : names);
-  document.getElementById('priv-mod').style.display = privMods.size ? 'block' : 'none';
-  const mb = document.getElementById('priv-mute');
-  mb.innerHTML = privMuted ? '<i class="fa-solid fa-microphone-slash"></i> Unmute' : '<i class="fa-solid fa-microphone"></i> Mute';
+  $p('priv-title').textContent = '🔒 ' + privRoom.emoji + ' ' + privRoom.placeName + ' · ' + privRoom.id + ' · ' + (privRoom.members.length < 2 ? 'waiting for others…' : names);
+  $p('priv-mod').style.display = privMods.size ? 'block' : 'none';
+  $p('priv-info').style.display = privMine ? '' : 'none';
+  $p('priv-mute').innerHTML = privMuted ? '<i class="fa-solid fa-microphone-slash"></i> Unmute' : '<i class="fa-solid fa-microphone"></i> Mute';
   bar.classList.add('open');
 }
 socket.on('privateRoomState', (room) => {
@@ -3261,18 +3314,19 @@ async function connectPrivate() {
   } finally { privConnecting = false; }
 }
 function cleanupPrivate() {
-  const r = lkPriv; lkPriv = null; privRoom = null; privMods.clear(); privMuted = false;
+  const r = lkPriv; lkPriv = null; privRoom = null; privMine = null; privMods.clear(); privMuted = false;
   if (r) { try { r.disconnect(); } catch (e) {} }
   document.querySelectorAll('audio.lk-priv-audio').forEach(el => el.remove());
+  privOverlay.classList.remove('open');
   paintPrivBar();
   syncVoice();                                             // public voice resumes if sound/mic were on
 }
 socket.on('privateRoomClosed', ({ reason }) => {
-  const msg = { ended: 'The private room ended', no_answer: 'No one joined the private room', declined: 'The invite was declined', closed_by_admin: 'A moderator closed this private room', logout: 'You were logged out' }[reason] || 'The private room closed';
+  const msg = { ended: 'The private room ended', expired: 'The private room closed after being empty too long', closed_by_admin: 'A moderator closed this private room', logout: 'You were logged out' }[reason] || 'The private room closed';
   cleanupPrivate(); showToast('🔒 ' + msg);
 });
-document.getElementById('priv-leave').onclick = () => { socket.emit('privateLeave'); cleanupPrivate(); showToast('You left the private room'); };
-document.getElementById('priv-mute').onclick = async () => {
+$p('priv-leave').onclick = () => { socket.emit('privateLeave'); cleanupPrivate(); showToast('You left the private room'); };
+$p('priv-mute').onclick = async () => {
   privMuted = !privMuted;
   if (lkPriv) { try { await lkPriv.localParticipant.setMicrophoneEnabled(!privMuted); } catch (e) {} }
   paintPrivBar();
