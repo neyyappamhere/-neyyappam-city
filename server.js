@@ -446,6 +446,100 @@ function roleStatePayload() {
   return o;
 }
 
+// =====================================================================
+// PRIVATE VOICE ROOMS
+//  - members only; a host invites 1-3 online members to a themed place (Happy Cup, Sarovaram Park, ...)
+//  - every room is its own LiveKit room, so nobody outside can hear it
+//  - admins can look at the live list and join VISIBLY as a listen-only "Moderator"
+//    (participants get a banner), and every event is written to the DB via ajax/private_room_log.php
+//  - audio is never recorded
+// =====================================================================
+const PRIVATE_PLACES = {
+  happycup:  { name: 'Happy Cup',      emoji: '☕' },
+  sarovaram: { name: 'Sarovaram Park', emoji: '🌳' },
+  beach:     { name: 'Beach',          emoji: '🏖️' },
+  hugamug:   { name: 'Hug a Mug',      emoji: '🫶' }
+};
+const PRIVATE_MAX = 4;                   // including the host
+const PRIVATE_INVITE_TTL_MS = 60 * 1000; // an unanswered invite closes the room after 60s
+const PRIVATE_LOG_ENDPOINT = process.env.PRIVATE_LOG_ENDPOINT || 'https://neyyappam.com/ajax/private_room_log.php';
+const privateRooms = {};                 // id -> { id, place, hostSid, members:Set, invited:Set, info:Map(sid->{uid,name,username}), startedAt, timer }
+
+function logPrivate(ev) {
+  try {
+    fetch(PRIVATE_LOG_ENDPOINT, { method: 'POST', body: new URLSearchParams(Object.assign({ secret: SHARED_SECRET }, ev)) })
+      .catch(e => console.error('[private] log failed:', e.message));
+  } catch (e) { console.error('[private] log failed:', e.message); }
+}
+function roomOfSid(sid) { return Object.values(privateRooms).find(r => r.members.has(sid)) || null; }
+function privatePublic(r) {
+  const place = PRIVATE_PLACES[r.place];
+  return {
+    id: r.id, place: r.place, placeName: place.name, emoji: place.emoji, startedAt: r.startedAt, hostSid: r.hostSid,
+    members: [...r.members].map(sid => ({ sid, name: r.info.get(sid).name, username: r.info.get(sid).username }))
+  };
+}
+function privateBroadcast(r) { const pub = privatePublic(r); r.members.forEach(sid => io.to(sid).emit('privateRoomState', pub)); }
+function closePrivateRoom(r, reason, adminId) {
+  if (!privateRooms[r.id]) return;
+  clearTimeout(r.timer);
+  delete privateRooms[r.id];
+  r.members.forEach(sid => io.to(sid).emit('privateRoomClosed', { reason }));
+  r.invited.forEach(sid => io.to(sid).emit('privateInviteCancelled', { roomId: r.id }));
+  logPrivate({ event: 'room_end', room_id: r.id, place: r.place, admin_id: adminId || '', detail: reason });
+}
+function leavePrivate(sid, reason) {
+  const r = roomOfSid(sid); if (!r) return;
+  const who = r.info.get(sid) || {};
+  r.members.delete(sid);
+  logPrivate({ event: 'member_leave', room_id: r.id, place: r.place, user_id: who.uid || '', detail: reason || 'left' });
+  if (r.members.size < 2 && r.invited.size === 0) closePrivateRoom(r, 'ended');
+  else privateBroadcast(r);
+}
+function privateInfoForAdmin(r) {
+  const pub = privatePublic(r);
+  return { id: r.id, place: r.place, placeName: pub.placeName, startedAt: r.startedAt,
+           members: [...r.members].map(sid => ({ uid: r.info.get(sid).uid, name: r.info.get(sid).name, username: r.info.get(sid).username })),
+           pendingInvites: r.invited.size };
+}
+
+// ---- admin API (called only by your PHP admin page, with the shared secret) ----
+function adminAuth(req, res, next) {
+  const got = Buffer.from(String(req.headers['x-city-secret'] || ''));
+  const want = Buffer.from(String(SHARED_SECRET || ''));
+  if (!SHARED_SECRET || SHARED_SECRET === 'change-this-to-a-long-random-string' || got.length !== want.length || !crypto.timingSafeEqual(got, want)) {
+    return res.status(403).json({ error: 'forbidden' });
+  }
+  next();
+}
+app.use('/admin', express.json(), adminAuth);
+app.get('/admin/private-rooms', (req, res) => res.json({ rooms: Object.values(privateRooms).map(privateInfoForAdmin) }));
+app.post('/admin/private-rooms/:id/join', async (req, res) => {
+  const r = privateRooms[req.params.id];
+  if (!r) return res.status(404).json({ error: 'That room has ended.' });
+  const { LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET } = process.env;
+  if (!LIVEKIT_URL || !LIVEKIT_API_KEY || !LIVEKIT_API_SECRET) return res.status(503).json({ error: 'LiveKit is not configured.' });
+  const adminId = String((req.body && req.body.adminId) || '0').replace(/[^\w-]/g, '').slice(0, 20);
+  try {
+    // identity starts with "mod-": the players' game client sees this and shows "A moderator joined" - listening is never secret.
+    const at = new AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET, { identity: 'mod-' + adminId + '-' + crypto.randomBytes(3).toString('hex'), name: 'Moderator', ttl: '30m' });
+    at.addGrant({ roomJoin: true, room: 'private-' + r.id, canPublish: false, canSubscribe: true });
+    logPrivate({ event: 'moderator_join', room_id: r.id, place: r.place, admin_id: adminId, detail: String((req.body && req.body.adminName) || '').slice(0, 80) });
+    res.json({ token: await at.toJwt(), url: LIVEKIT_URL, room: 'private-' + r.id });
+  } catch (e) { console.error('[private] mod token failed:', e.message); res.status(500).json({ error: 'Could not create a moderator token.' }); }
+});
+app.post('/admin/private-rooms/:id/leave', (req, res) => {
+  const r = privateRooms[req.params.id];
+  logPrivate({ event: 'moderator_leave', room_id: req.params.id, place: r ? r.place : '', admin_id: String((req.body && req.body.adminId) || '').slice(0, 20) });
+  res.json({ ok: true });
+});
+app.post('/admin/private-rooms/:id/close', (req, res) => {
+  const r = privateRooms[req.params.id];
+  if (!r) return res.status(404).json({ error: 'That room has ended.' });
+  closePrivateRoom(r, 'closed_by_admin', String((req.body && req.body.adminId) || '').slice(0, 20));
+  res.json({ ok: true });
+});
+
 io.on('connection', (socket) => {
   console.log('connected:', socket.id);
   socket.emit('roleState', roleStatePayload());
@@ -500,6 +594,7 @@ io.on('connection', (socket) => {
   });
   socket.on('deauth', () => {
     const p = players[socket.id]; if (!p) return;
+    leavePrivate(socket.id, 'logout');
     p.uid = null; p.username = null; p.balloons = 0; p.name = 'Guest';
     socket.emit('authState', { loggedIn: false, loggedOut: true, balloons: 0 });
     io.emit('playerRenamed', { id: socket.id, name: p.name });
@@ -513,6 +608,74 @@ io.on('connection', (socket) => {
     if (['short', 'pony', 'bandana'].includes(d.hairStyle)) p.hairStyle = d.hairStyle;
     socket.broadcast.emit('playerLook', { id: socket.id, gender: p.gender, outfitColor: p.outfitColor, hairStyle: p.hairStyle });
   });
+
+
+  // ---------------- Private voice rooms ----------------
+  socket.on('privateInvite', (d = {}, cb) => {
+    cb = typeof cb === 'function' ? cb : () => {};
+    const p = players[socket.id];
+    if (!p || !p.uid) return cb({ ok: false, error: 'Log in to start a private room.' });
+    if (roomOfSid(socket.id)) return cb({ ok: false, error: 'You are already in a private room.' });
+    if (!PRIVATE_PLACES[d.place]) return cb({ ok: false, error: 'Pick a place first.' });
+    const now = Date.now();
+    if (p.lastPrivInvite && now - p.lastPrivInvite < 3000) return cb({ ok: false, error: 'Please wait a moment.' });
+    p.lastPrivInvite = now;
+    const targets = [...new Set(Array.isArray(d.targets) ? d.targets : [])]
+      .filter(sid => sid !== socket.id && players[sid] && players[sid].uid && !roomOfSid(sid))
+      .slice(0, PRIVATE_MAX - 1);
+    if (!targets.length) return cb({ ok: false, error: 'Pick at least one friend who is online and logged in.' });
+    const id = crypto.randomBytes(6).toString('hex');
+    const r = { id, place: d.place, hostSid: socket.id, members: new Set([socket.id]), invited: new Set(targets),
+                info: new Map(), startedAt: Date.now(), timer: null };
+    r.info.set(socket.id, { uid: p.uid, name: p.name, username: p.username });
+    privateRooms[id] = r;
+    logPrivate({ event: 'room_start', room_id: id, place: r.place, user_id: p.uid, detail: 'invited ' + targets.length });
+    targets.forEach(sid => {
+      const t = players[sid];
+      r.info.set(sid, { uid: t.uid, name: t.name, username: t.username });
+      io.to(sid).emit('privateInvited', { roomId: id, place: r.place, placeName: PRIVATE_PLACES[r.place].name, emoji: PRIVATE_PLACES[r.place].emoji,
+                                          from: { name: p.name, username: p.username } });
+    });
+    r.timer = setTimeout(() => {
+      const room = privateRooms[id]; if (!room) return;
+      room.invited.forEach(sid => io.to(sid).emit('privateInviteCancelled', { roomId: id }));
+      room.invited.clear();
+      if (room.members.size < 2) closePrivateRoom(room, 'no_answer');
+    }, PRIVATE_INVITE_TTL_MS);
+    privateBroadcast(r);
+    cb({ ok: true, roomId: id });
+  });
+
+  socket.on('privateRespond', (d = {}) => {
+    const p = players[socket.id]; const r = privateRooms[d.roomId];
+    if (!p || !p.uid || !r || !r.invited.has(socket.id)) return;
+    r.invited.delete(socket.id);
+    if (d.accept && !roomOfSid(socket.id) && r.members.size < PRIVATE_MAX) {
+      r.members.add(socket.id);
+      r.info.set(socket.id, { uid: p.uid, name: p.name, username: p.username });
+      logPrivate({ event: 'member_join', room_id: r.id, place: r.place, user_id: p.uid });
+      privateBroadcast(r);
+    } else {
+      io.to(r.hostSid).emit('privateDeclined', { name: p.name });
+      if (r.members.size < 2 && r.invited.size === 0) closePrivateRoom(r, 'declined');
+    }
+  });
+
+  // Each member gets a token for ONLY their own room.
+  socket.on('privateJoinToken', async (cb) => {
+    cb = typeof cb === 'function' ? cb : () => {};
+    const r = roomOfSid(socket.id); const p = players[socket.id];
+    if (!r || !p || !p.uid) return cb({ ok: false, error: 'You are not in a private room.' });
+    const { LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET } = process.env;
+    if (!LIVEKIT_URL || !LIVEKIT_API_KEY || !LIVEKIT_API_SECRET) return cb({ ok: false, error: 'Voice chat is not configured on the server yet.' });
+    try {
+      const at = new AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET, { identity: 'u' + p.uid + '-' + socket.id.slice(0, 8), name: p.name, ttl: '2h' });
+      at.addGrant({ roomJoin: true, room: 'private-' + r.id, canPublish: true, canSubscribe: true });
+      cb({ ok: true, token: await at.toJwt(), url: LIVEKIT_URL, room: 'private-' + r.id });
+    } catch (e) { console.error('[private] token failed:', e.message); cb({ ok: false, error: 'Could not create a voice token.' }); }
+  });
+
+  socket.on('privateLeave', () => leavePrivate(socket.id, 'left'));
 
   socket.on('move', (pos) => {
     const p = players[socket.id];
@@ -749,6 +912,9 @@ io.on('connection', (socket) => {
   socket.on('voice-ice', ({ target, candidate }) => io.to(target).emit('voice-ice', { from: socket.id, candidate }));
 
   socket.on('disconnect', () => {
+    leavePrivate(socket.id, 'disconnected');
+    // pending invites to this socket: drop them
+    Object.values(privateRooms).forEach(r => { if (r.invited.delete(socket.id) && r.members.size < 2 && r.invited.size === 0) closePrivateRoom(r, 'declined'); });
     const p = players[socket.id];
     if (p && p.drivingCarId) {
       delete occupiedCars[p.drivingCarId];
