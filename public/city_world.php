@@ -310,14 +310,35 @@
   .lg-guest{ display:block; width:100%; margin-top:6px; padding:10px; background:none; border:none; color:#999; font-size:.82em; cursor:pointer; font-family:inherit; }
   #chat-input[readonly]{ cursor:pointer; }
   @media (max-width:420px){ #login-card{ padding:22px 18px 18px; } #account-pill{ max-width:130px; } }
+
+  /* ===== Phase 2: signed-in gate + character settings ===== */
+  #name-gate.checking .card{ display:none; }
+  #gate-loading{ display:none; color:var(--muted); font-size:.9em; font-weight:700; text-align:center; }
+  #name-gate.checking #gate-loading{ display:block; }
+  #gate-account{ display:none; background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:10px 14px; margin:0 0 14px; text-align:center; }
+  #gate-account b{ display:block; font-size:1.05em; } #gate-account span{ color:var(--muted); font-size:.8em; }
+  #name-gate.member #gate-account{ display:block; }
+  #name-gate.member #name-input{ display:none; }
+  #name-gate.member .role-block{ display:none; }
+  .set-sec{ margin-top:12px; padding-top:10px; border-top:1px solid var(--border); }
+  .set-sec h4{ margin:0 0 8px; font-size:.8em; color:var(--muted); font-weight:700; letter-spacing:.04em; text-transform:uppercase; }
+  .set-row{ display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px; }
+  .set-pill{ flex:1 1 auto; padding:9px 10px; min-height:40px; border-radius:12px; border:2px solid var(--border); background:var(--surface); color:var(--text); font-weight:700; font-size:.8em; cursor:pointer; font-family:inherit; }
+  .set-pill.selected{ border-color:var(--pk); background:linear-gradient(135deg,#FE019A,#9b5de5); color:#fff; }
+  .set-swatch{ width:36px; height:36px; border-radius:50%; border:3px solid transparent; cursor:pointer; }
+  .set-swatch.selected{ border-color:#fff; box-shadow:0 0 0 2px var(--pk); }
+  .set-note{ font-size:.72em; color:var(--muted); margin:2px 0 0; }
+  #stats-panel{ max-height:88vh; overflow-y:auto; }
 </style>
 </head>
 <body>
 
-<div id="name-gate">
+<div id="name-gate" class="checking">
+  <div id="gate-loading">Signing you in…</div>
   <div class="card">
     <h3>Neyyappam City</h3>
     <p class="sub">Kerala edition — sip chaya at the chayakkada, ride a kaalavandi, collect balloons</p>
+    <div id="gate-account"><b id="gate-disp">—</b><span id="gate-user"></span><br><span>Your city name comes from your account</span></div>
     <input id="name-input" placeholder="Pick a name to play as" maxlength="20" />
     <div class="gender-row">
       <button type="button" class="gender-pill" data-gender="male">Male</button>
@@ -339,13 +360,13 @@
       <button type="button" class="gender-pill hair-pill" data-hair="pony">Pony</button>
       <button type="button" class="gender-pill hair-pill" data-hair="bandana">Bandana</button>
     </div>
-    <div class="picker-label">Play as</div>
-    <div class="gender-row">
+    <div class="role-block"><div class="picker-label">Play as</div></div>
+    <div class="gender-row role-block">
       <button type="button" class="gender-pill role-pill selected" data-role="visitor">Visitor</button>
       <button type="button" class="gender-pill role-pill" data-role="chayakkaran">🍵 Chayakkadakkaran</button>
       <button type="button" class="gender-pill role-pill" data-role="karavakkari">🥛 Karavakkari chechi</button>
     </div>
-    <div class="note">Run the tea shop or the milk stall as a real player — customers tip you half of every sale.</div>
+    <div class="note role-block">Run the tea shop or the milk stall as a real player — customers tip you half of every sale.</div>
     <button class="enter" id="join-btn">Enter City</button>
     <div class="note" id="save-status">Guest mode — balloons won't be saved to an account.</div>
   </div>
@@ -400,6 +421,33 @@
     <div class="stat-row"><span>Distance traveled</span><span id="stat-distance">0 m</span></div>
     <div class="stat-row"><span>Deliveries completed</span><span id="stat-deliveries">0</span></div>
     <div class="stat-row"><span>Cars driven</span><span id="stat-cars">0</span></div>
+    <div class="set-sec" id="set-sec">
+      <h4>Character settings</h4>
+      <div class="set-row" id="set-gender">
+        <button type="button" class="set-pill" data-sg="male">Male</button>
+        <button type="button" class="set-pill" data-sg="female">Female</button>
+        <button type="button" class="set-pill" data-sg="other">Other</button>
+      </div>
+      <div class="set-row" id="set-color">
+        <button type="button" class="set-swatch" data-sc="#FE019A" style="background:#FE019A" aria-label="Pink"></button>
+        <button type="button" class="set-swatch" data-sc="#3b82f6" style="background:#3b82f6" aria-label="Blue"></button>
+        <button type="button" class="set-swatch" data-sc="#3fae55" style="background:#3fae55" aria-label="Green"></button>
+        <button type="button" class="set-swatch" data-sc="#9b5de5" style="background:#9b5de5" aria-label="Purple"></button>
+        <button type="button" class="set-swatch" data-sc="#f2c230" style="background:#f2c230" aria-label="Yellow"></button>
+        <button type="button" class="set-swatch" data-sc="#d83c3c" style="background:#d83c3c" aria-label="Red"></button>
+      </div>
+      <div class="set-row" id="set-hair">
+        <button type="button" class="set-pill" data-sh="short">Short</button>
+        <button type="button" class="set-pill" data-sh="pony">Pony</button>
+        <button type="button" class="set-pill" data-sh="bandana">Bandana</button>
+      </div>
+      <div class="set-row" id="set-role">
+        <button type="button" class="set-pill" data-sr="visitor">Visitor</button>
+        <button type="button" class="set-pill" data-sr="chayakkaran">🍵 Chaya</button>
+        <button type="button" class="set-pill" data-sr="karavakkari">🥛 Karavakkari</button>
+      </div>
+      <p class="set-note" id="set-note">Your name comes from your account and can't be changed here. Changing "Play as" reloads the city.</p>
+    </div>
   </div>
 </div>
 
@@ -517,47 +565,55 @@ const handoffBalloons = 0;   // balances now come only from the signed login tok
    * AUTH_URL / SITE_URL can be overridden: ?auth=https://neyyappam.com/ajax/city_auth.php&site=https://neyyappam.com
    * city_token is a short-lived signed token; server.js trusts ONLY this, never a uid from the browser.
    ========================================================= */
-const AUTH_URL = params.get('auth') || window.CITY_AUTH_URL || '/ajax/city_auth.php';
+// This page is plain HTML, so '/ajax/city_auth.php' only works if the game is served from the PHP site itself.
+// Anywhere else (Node host, subdomain, localhost) we call the live PHP site by its full address.
+const ON_PHP_SITE = /^(www\.)?neyyappam\.(com|net|in)$/.test(location.hostname);
+const AUTH_URL = params.get('auth') || window.CITY_AUTH_URL || (ON_PHP_SITE ? '/ajax/city_auth.php' : 'https://neyyappam.com/ajax/city_auth.php');
 const SITE_URL = (params.get('site') || window.CITY_SITE_URL || (AUTH_URL.startsWith('http') ? new URL(AUTH_URL).origin : location.origin)).replace(/\/$/, '');
-const auth = { loggedIn: false, name: null, uid: null, token: null, expires: 0, checked: false };
+const auth = { loggedIn: false, name: null, display: null, uid: null, token: null, expires: 0, checked: false, profile: null };
 let pendingAfterLogin = null;
 
 async function authCall(action, body) {
   const opt = { credentials: 'include', cache: 'no-store' };
   let url = AUTH_URL + '?action=' + encodeURIComponent(action);
   if (body) { opt.method = 'POST'; opt.body = new URLSearchParams(Object.assign({ action }, body)); url = AUTH_URL; }
-  const res = await fetch(url, opt);
+  const host = new URL(url, location.href).host;
+  let res;
+  try { res = await fetch(url, opt); }
+  catch (e) { console.error('[auth] request blocked or offline:', url, e); throw new Error("Can't reach " + host + " (blocked by CORS, cookies or network)"); }
   let data = null; try { data = await res.json(); } catch (e) {}
-  if (!data) throw new Error('Login service is not reachable');
+  if (!data) { console.error('[auth] not JSON. status', res.status, 'url', url); throw new Error('Login service not reachable: ' + host + ' answered HTTP ' + res.status + ' (is ajax/city_auth.php uploaded?)'); }
   return data;
 }
 function applyAuth(d) {
   auth.checked = true;
   if (d && d.logged_in && d.city_token) {
     auth.loggedIn = true; auth.token = d.city_token; auth.expires = (d.city_token_expires || 0) * 1000;
-    auth.uid = d.user && d.user.id; auth.name = d.user && d.user.name;
-  } else { auth.loggedIn = false; auth.token = null; auth.uid = null; auth.name = null; auth.expires = 0; }
+    auth.uid = d.user && d.user.id; auth.name = d.user && d.user.name; auth.display = (d.user && d.user.display) || auth.name;
+    auth.profile = d.profile || null;
+  } else { auth.loggedIn = false; auth.token = null; auth.uid = null; auth.name = null; auth.display = null; auth.profile = null; auth.expires = 0; }
   paintAuthUi();
+  routeGate();
 }
 function paintAuthUi() {
   const nm = document.getElementById('account-name'), btn = document.getElementById('account-action');
   if (!nm) return;
-  nm.textContent = auth.loggedIn ? auth.name : 'Guest';
+  nm.textContent = auth.loggedIn ? auth.display : 'Guest';
   btn.textContent = auth.loggedIn ? 'Log out' : 'Log in';
   btn.className = auth.loggedIn ? 'ghost' : '';
   const ci = document.getElementById('chat-input');
   if (ci) { ci.readOnly = !auth.loggedIn; ci.placeholder = auth.loggedIn ? 'Say something...' : '🔒 Log in to chat'; }
   const ni = document.getElementById('name-input');
-  if (ni) { if (auth.loggedIn) { ni.value = auth.name; ni.readOnly = true; } else { ni.readOnly = false; } }
+  if (ni) { if (auth.loggedIn) { ni.value = auth.display; ni.readOnly = true; } else { ni.readOnly = false; } }
   const ss = document.getElementById('save-status');
   if (ss) {
-    ss.textContent = auth.loggedIn ? 'Signed in as ' + auth.name + ' — balloons are saved to your account, mic & chat unlocked.'
+    ss.textContent = auth.loggedIn ? 'Signed in as ' + auth.display + ' (@' + auth.name + ') — balloons are saved, mic & chat unlocked.'
                                    : 'Guest mode — you can explore, but mic, chat and saving balloons need a login.';
     ss.classList.toggle('logged-in', auth.loggedIn);
   }
 }
 async function refreshAuth() {
-  try { applyAuth(await authCall('status')); } catch (e) { if (!auth.checked) { auth.checked = true; paintAuthUi(); } }
+  try { applyAuth(await authCall('status')); } catch (e) { if (!auth.checked) { auth.checked = true; paintAuthUi(); routeGate(); } }
   return auth.loggedIn;
 }
 // Token is valid for 2h; refresh it well before it runs out, and whenever the tab comes back to the foreground.
@@ -571,6 +627,40 @@ async function keepTokenFresh() {
 }
 setInterval(keepTokenFresh, 5 * 60 * 1000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) keepTokenFresh(); });
+
+// ---- name screen routing: signed-in members skip it ----
+const gateEl = document.getElementById('name-gate');
+let gateRouted = false;
+function routeGate() {
+  if (gateEl.style.display === 'none') return;                 // already in the city
+  gateEl.classList.remove('checking');
+  if (!auth.loggedIn) {
+    gateEl.classList.remove('member');
+    let r = null; try { r = sessionStorage.getItem('cityRole'); } catch (e) {}
+    const rb = r && document.querySelector('.role-pill[data-role="' + r + '"]');
+    if (rb && !gateRouted) { gateRouted = true; rb.click(); }     // keep the "Play as" choice made in settings after the reload
+    return;
+  }
+  document.getElementById('gate-disp').textContent = auth.display;
+  document.getElementById('gate-user').textContent = '@' + auth.name;
+  if (auth.profile) {                                           // character already set up -> straight into the city
+    if (gateRouted) return;
+    gateRouted = true;
+    myGender = auth.profile.gender; myOutfitColor = auth.profile.outfit; myHairStyle = auth.profile.hair;
+    let r = null; try { r = sessionStorage.getItem('cityRole'); } catch (e) {}
+    myRole = (r === 'chayakkaran' || r === 'karavakkari') ? r : null;
+    enterCity();
+  } else {                                                      // first time: pick a look once
+    gateEl.classList.add('member');
+    document.getElementById('join-btn').textContent = 'Save & Enter City';
+  }
+}
+setTimeout(() => { gateEl.classList.remove('checking'); }, 3500);   // never leave the screen blank if the login check is slow
+
+async function saveProfile() {
+  if (!auth.loggedIn) return;
+  try { await authCall('save_profile', { gender: myGender, outfit: myOutfitColor, hair: myHairStyle }); auth.profile = { gender: myGender, outfit: myOutfitColor, hair: myHairStyle }; } catch (e) { console.error('[profile] save failed', e); }
+}
 
 // ---- login popup ----
 const loginModal = document.getElementById('login-modal');
@@ -612,8 +702,8 @@ document.getElementById('login-form').addEventListener('submit', async (ev) => {
       document.getElementById('lg-pass').value = '';
       applyAuth(d);
       const after = pendingAfterLogin; closeLogin();
-      showToast('✅ Welcome, ' + auth.name + '!');
-      if (typeof socket !== 'undefined' && socket.connected && inGame()) socket.emit('auth', { token: auth.token });
+      showToast('✅ Welcome, ' + auth.display + '!');
+      if (typeof socket !== 'undefined' && socket.connected && inGame()) { socket.emit('auth', { token: auth.token }); afterLoginInGame(); }
       if (after) after();
     }
   } catch (e) { err.textContent = e.message || 'Could not reach the login service'; err.style.display = 'block'; }
@@ -2091,7 +2181,7 @@ function tickAvatar(g, now) {
   u.body.position.y = bob; u.body.rotation.x = rx; u.body.rotation.z = rz;
 }
 
-function makeLabel(text) {
+function makeLabel(text, sub) {
   const canvas = document.createElement('canvas');
   canvas.width = 256; canvas.height = 64;
   const ctx = canvas.getContext('2d');
@@ -2100,10 +2190,16 @@ function makeLabel(text) {
   ctx.beginPath();
   ctx.moveTo(r,0); ctx.arcTo(256,0,256,64,r); ctx.arcTo(256,64,0,64,r);
   ctx.arcTo(0,64,0,0,r); ctx.arcTo(0,0,256,0,r); ctx.closePath(); ctx.fill();
-  ctx.fillStyle = '#FE019A';
-  ctx.font = 'bold 28px sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText(text, 128, 42);
+  const fit = (t, px, weight) => { let size = px; ctx.font = weight + ' ' + size + 'px sans-serif'; while (ctx.measureText(t).width > 232 && size > 12) { size -= 1; ctx.font = weight + ' ' + size + 'px sans-serif'; } return t; };
+  ctx.fillStyle = '#FE019A';
+  if (sub) {
+    ctx.fillText(fit(text, 26, 'bold'), 128, 30);
+    ctx.fillStyle = '#c9b8e8';
+    ctx.fillText(fit(sub, 18, 'normal'), 128, 53);
+  } else {
+    ctx.fillText(fit(text, 28, 'bold'), 128, 42);
+  }
   const tex = new THREE.CanvasTexture(canvas);
   const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true }));
   sprite.scale.set(2, 0.5, 1);
@@ -2514,7 +2610,8 @@ document.getElementById('join-btn').onclick = enterCity;
 document.getElementById('name-input').addEventListener('keydown', e => { if (e.key==='Enter') enterCity(); });
 
 function enterCity() {
-  myName = auth.loggedIn ? auth.name : (document.getElementById('name-input').value.trim() || 'Guest');
+  myName = auth.loggedIn ? auth.display : (document.getElementById('name-input').value.trim() || 'Guest');
+  const firstTime = auth.loggedIn && !auth.profile;
   scene.remove(myAvatar);
   if (myRole === 'chayakkaran') myGender = 'male'; else if (myRole === 'karavakkari') myGender = 'female';
   myAvatar = makeAvatarMesh(myGender, myOutfitColor, myHairStyle, myRole);
@@ -2524,6 +2621,7 @@ function enterCity() {
   document.getElementById('name-gate').style.display = 'none';
   setTimeout(() => showToast(auth.loggedIn ? '🔇 Sound and 🎤 mic are OFF — tap the round icons to turn them on' : '🔇 Sound is OFF. Log in to use 🎤 mic and 💬 chat'), 800);
   socket.emit('join', { name: myName, gender: myGender, outfitColor: myOutfitColor, hairStyle: myHairStyle, role: myRole, token: auth.loggedIn ? auth.token : null });
+  if (firstTime) saveProfile();
 }
 
 function refreshOnlineCount(){ onlineEl.textContent = Object.keys(others).length + 1; }
@@ -2752,10 +2850,10 @@ function renderInventory() {
 
 function addOtherPlayer(p) {
   const group = makeAvatarMesh(p.gender, p.outfitColor, p.hairStyle, p.role);
-  const label = makeLabel(p.name + (p.role === 'chayakkaran' ? ' 🍵' : p.role === 'karavakkari' ? ' 🥛' : ''));
+  const label = makeLabel(p.name + (p.role === 'chayakkaran' ? ' 🍵' : p.role === 'karavakkari' ? ' 🥛' : ''), p.username ? '@' + p.username : null);
   group.add(label);
   scene.add(group);
-  others[p.id] = { group, label, target: p, name: p.name, role: p.role };
+  others[p.id] = { group, label, target: p, name: p.name, username: p.username, role: p.role };
 }
 
 setInterval(() => {
@@ -2794,12 +2892,22 @@ socket.on('authState', (st) => {
   if (st.loggedOut) balloonEl.textContent = '0';
   if (st.error === 'bad_token') { refreshAuth(); }
 });
-socket.on('playerRenamed', ({ id, name }) => {
+socket.on('playerRenamed', ({ id, name, username }) => {
   const o = others[id]; if (!o) return;
-  o.name = name;
+  o.name = name; o.username = username || null;
   if (o.label) o.group.remove(o.label);
-  o.label = makeLabel(name + (o.role === 'chayakkaran' ? ' 🍵' : o.role === 'karavakkari' ? ' 🥛' : ''));
+  o.label = makeLabel(name + (o.role === 'chayakkaran' ? ' 🍵' : o.role === 'karavakkari' ? ' 🥛' : ''), username ? '@' + username : null);
   o.group.add(o.label);
+});
+// Someone changed their look in settings: rebuild their avatar where they are standing
+socket.on('playerLook', ({ id, gender, outfitColor, hairStyle }) => {
+  const o = others[id]; if (!o) return;
+  const keep = Object.assign({}, o.target, { id, name: o.name, username: o.username, role: o.role, gender, outfitColor, hairStyle });
+  const wasVisible = o.group.visible;
+  const pos = o.group.position.clone(), ry = o.group.rotation.y;
+  scene.remove(o.group); delete others[id];
+  addOtherPlayer(keep);
+  others[id].group.position.copy(pos); others[id].group.rotation.y = ry; others[id].group.visible = wasVisible;
 });
 socket.on('connect', () => { if (inGame() && auth.loggedIn) socket.emit('auth', { token: auth.token }); });
 function escapeHtml(s){ return s.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
@@ -2967,8 +3075,56 @@ mapCanvas.addEventListener('click', (e) => {
   document.getElementById('map-overlay').style.display = 'none';
 });
 
+
+/* =========================================================
+   Character settings (inside the Stats panel). Name is locked to the account.
+   ========================================================= */
+function rebuildMyAvatar() {
+  const pos = myAvatar.position.clone(), ry = myAvatar.rotation.y, vis = myAvatar.visible;
+  scene.remove(myAvatar);
+  myAvatar = makeAvatarMesh(myGender, myOutfitColor, myHairStyle, myRole);
+  myAvatar.position.copy(pos); myAvatar.rotation.y = ry; myAvatar.visible = vis;
+  scene.add(myAvatar);
+}
+let saveTimer = null;
+function lookChanged() {
+  rebuildMyAvatar();
+  socket.emit('updateLook', { gender: myGender, outfitColor: myOutfitColor, hairStyle: myHairStyle });
+  document.getElementById('stat-look').textContent = `${myGender}, ${myHairStyle} hair`;
+  clearTimeout(saveTimer); saveTimer = setTimeout(saveProfile, 700);   // remembered for next visit (members only)
+}
+function paintSettings() {
+  document.querySelectorAll('#set-gender .set-pill').forEach(b => b.classList.toggle('selected', b.dataset.sg === myGender));
+  document.querySelectorAll('#set-hair .set-pill').forEach(b => b.classList.toggle('selected', b.dataset.sh === myHairStyle));
+  document.querySelectorAll('#set-color .set-swatch').forEach(b => b.classList.toggle('selected', b.dataset.sc.toLowerCase() === String(myOutfitColor).toLowerCase()));
+  const cur = myRole || 'visitor';
+  document.querySelectorAll('#set-role .set-pill').forEach(b => b.classList.toggle('selected', b.dataset.sr === cur));
+  const note = document.getElementById('set-note');
+  note.textContent = auth.loggedIn ? "Your name comes from your account and can't be changed here. Changes are saved for your next visit. Changing \"Play as\" reloads the city."
+                                   : "Log in to save your character for next time. Changing \"Play as\" reloads the city.";
+}
+document.querySelectorAll('#set-gender .set-pill').forEach(b => b.onclick = () => {
+  if (myRole) { showToast('Tea-shop roles keep their character — switch to Visitor to change it'); return; }
+  myGender = b.dataset.sg; paintSettings(); lookChanged();
+});
+document.querySelectorAll('#set-hair .set-pill').forEach(b => b.onclick = () => { myHairStyle = b.dataset.sh; paintSettings(); lookChanged(); });
+document.querySelectorAll('#set-color .set-swatch').forEach(b => b.onclick = () => { myOutfitColor = b.dataset.sc; paintSettings(); lookChanged(); });
+document.querySelectorAll('#set-role .set-pill').forEach(b => b.onclick = () => {
+  const want = b.dataset.sr === 'visitor' ? null : b.dataset.sr;
+  if (want === myRole) return;
+  try { if (want) sessionStorage.setItem('cityRole', want); else sessionStorage.removeItem('cityRole'); } catch (e) {}
+  if (auth.loggedIn) { clearTimeout(saveTimer); saveProfile().finally(() => location.reload()); } else location.reload();
+});
+// A guest who logs in while already in the city: keep the look they picked on the very first login, otherwise load their saved one
+function afterLoginInGame() {
+  if (!auth.profile) { saveProfile(); return; }
+  myGender = myRole ? myGender : auth.profile.gender; myOutfitColor = auth.profile.outfit; myHairStyle = auth.profile.hair;
+  lookChanged(); paintSettings();
+}
+
 document.getElementById('stats-btn').onclick = () => {
-  document.getElementById('stat-name').textContent = myName;
+  paintSettings();
+  document.getElementById('stat-name').textContent = myName + (auth.loggedIn ? '  🔒' : '');
   document.getElementById('stat-look').textContent = `${myGender}, ${myHairStyle} hair`;
   document.getElementById('stat-balloons').textContent = balloonEl.textContent;
   document.getElementById('stat-distance').textContent = Math.round(stats.distanceTraveled) + ' m';
