@@ -517,10 +517,7 @@ const handoffBalloons = 0;   // balances now come only from the signed login tok
    * AUTH_URL / SITE_URL can be overridden: ?auth=https://neyyappam.com/ajax/city_auth.php&site=https://neyyappam.com
    * city_token is a short-lived signed token; server.js trusts ONLY this, never a uid from the browser.
    ========================================================= */
-// This page is plain HTML, so '/ajax/city_auth.php' only works if the game is served from the PHP site itself.
-// Anywhere else (Node host, subdomain, localhost) we call the live PHP site by its full address.
-const ON_PHP_SITE = /^(www\.)?neyyappam\.(com|net|in)$/.test(location.hostname);
-const AUTH_URL = params.get('auth') || window.CITY_AUTH_URL || (ON_PHP_SITE ? '/ajax/city_auth.php' : 'https://neyyappam.com/ajax/city_auth.php');
+const AUTH_URL = params.get('auth') || window.CITY_AUTH_URL || '/ajax/city_auth.php';
 const SITE_URL = (params.get('site') || window.CITY_SITE_URL || (AUTH_URL.startsWith('http') ? new URL(AUTH_URL).origin : location.origin)).replace(/\/$/, '');
 const auth = { loggedIn: false, name: null, uid: null, token: null, expires: 0, checked: false };
 let pendingAfterLogin = null;
@@ -529,12 +526,9 @@ async function authCall(action, body) {
   const opt = { credentials: 'include', cache: 'no-store' };
   let url = AUTH_URL + '?action=' + encodeURIComponent(action);
   if (body) { opt.method = 'POST'; opt.body = new URLSearchParams(Object.assign({ action }, body)); url = AUTH_URL; }
-  const host = new URL(url, location.href).host;
-  let res;
-  try { res = await fetch(url, opt); }
-  catch (e) { console.error('[auth] request blocked or offline:', url, e); throw new Error("Can't reach " + host + " (blocked by CORS, cookies or network)"); }
+  const res = await fetch(url, opt);
   let data = null; try { data = await res.json(); } catch (e) {}
-  if (!data) { console.error('[auth] not JSON. status', res.status, 'url', url); throw new Error('Login service not reachable: ' + host + ' answered HTTP ' + res.status + ' (is ajax/city_auth.php uploaded?)'); }
+  if (!data) throw new Error('Login service is not reachable');
   return data;
 }
 function applyAuth(d) {
