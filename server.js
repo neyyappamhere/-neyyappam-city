@@ -1,7 +1,6 @@
 // server.js — real-time positions, chat, voice signaling, and balloon pickups.
 //
-// Balloon crediting: if a player joined with a real `uid` (passed from your
-// PHP embed page for logged-in users), collected balloons are POSTed to your
+// Balloon crediting: if a player joined with a verified login token (issued by ajax/city_auth.php), collected balloons are POSTed to your
 // PHP endpoint (award_balloons.php) so they land in the real `users.balloons`
 // column and `balloon_transactions` ledger. Guests (no uid) just get a
 // session-only counter that resets when they leave — never touches the DB.
@@ -43,14 +42,26 @@ app.use(express.static('public', {
 //   LIVEKIT_API_KEY     from your LiveKit project settings
 //   LIVEKIT_API_SECRET  from your LiveKit project settings
 const { AccessToken } = require('livekit-server-sdk');
+// Token-based (no cookies), so a permissive CORS policy on this one route is safe and lets the game run on another origin.
+app.use('/livekit-token', (req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+  res.setHeader('Cache-Control', 'no-store');
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
+});
 app.get('/livekit-token', async (req, res) => {
+  // Voice chat is for logged-in members only: a valid signed login token is required.
+  const bearer = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+  const who = verifyCityToken(bearer || String(req.query.token || ''));
+  if (!who) return res.status(401).json({ error: 'Please log in to use the microphone.', login_required: true });
   const { LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET } = process.env;
   if (!LIVEKIT_URL || !LIVEKIT_API_KEY || !LIVEKIT_API_SECRET) {
     return res.status(503).json({ error: 'Voice chat is not configured on the server yet (missing LIVEKIT_* settings).' });
   }
   try {
-    const identity = String(req.query.identity || '').slice(0, 64) || 'guest-' + Math.random().toString(36).slice(2, 10);
-    const at = new AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET, { identity, ttl: '2h' });
+    const identity = 'u' + who.uid + '-' + String(req.query.identity || '').replace(/[^\w-]/g, '').slice(0, 24);
+    const at = new AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET, { identity, name: who.name, ttl: '2h' });
     at.addGrant({ roomJoin: true, room: 'neyyappam-city', canPublish: true, canSubscribe: true });
     res.json({ token: await at.toJwt(), url: LIVEKIT_URL });
   } catch (err) {
@@ -67,6 +78,24 @@ app.get(['/', '/city_world.php'], (req, res) => {
 // --- Config for talking back to your PHP site ---
 const AWARD_ENDPOINT = process.env.AWARD_ENDPOINT || 'https://neyyappam.com/ajax/award_balloons.php';
 const SHARED_SECRET = process.env.CITY_SHARED_SECRET || 'change-this-to-a-long-random-string';
+
+// --- Signed login tokens issued by ajax/city_auth.php (payload.signature, HMAC-SHA256) ---
+// The browser can no longer claim "I am user 123": the uid/name/balloons below come only from a token
+// signed with CITY_SHARED_SECRET, which only your PHP site can produce.
+function b64urlDecode(s) { return Buffer.from(String(s).replace(/-/g, '+').replace(/_/g, '/'), 'base64'); }
+function verifyCityToken(token) {
+  if (typeof token !== 'string' || token.length > 2000 || !token.includes('.')) return null;
+  if (!SHARED_SECRET || SHARED_SECRET === 'change-this-to-a-long-random-string') return null;
+  const [payload, sig] = token.split('.');
+  const good = crypto.createHmac('sha256', SHARED_SECRET).update(payload).digest();
+  const given = b64urlDecode(sig);
+  if (given.length !== good.length || !crypto.timingSafeEqual(given, good)) return null;
+  try {
+    const d = JSON.parse(b64urlDecode(payload).toString('utf8'));
+    if (!d || !Number.isInteger(d.uid) || d.uid <= 0 || !(d.exp > Date.now() / 1000)) return null;
+    return { uid: d.uid, name: String(d.name || 'Player').slice(0, 24), balloons: Math.max(0, parseInt(d.bal, 10) || 0) };
+  } catch (e) { return null; }
+}
 
 const players = {}; // socket.id -> { id, name, gender, outfitColor, hairStyle, x, y, z, rotY, uid, balloons, drivingCarId, inventory, flowersGiven, flowersReceived, treasuresFound }
 const claimedPickups = new Set();
@@ -422,9 +451,10 @@ io.on('connection', (socket) => {
   socket.on('join', (data) => {
     const wantRole = ['chayakkaran', 'karavakkari'].includes(data.role) ? data.role : null;
     const role = wantRole && !(roles[wantRole] && players[roles[wantRole]]) ? wantRole : null;
+    const auth = verifyCityToken(data.token);     // null => guest
     players[socket.id] = {
       id: socket.id,
-      name: (data.name || 'Guest').slice(0, 24),
+      name: auth ? auth.name : (String(data.name || 'Guest').slice(0, 24)),
       gender: role === 'chayakkaran' ? 'male' : role === 'karavakkari' ? 'female' : (['male', 'female', 'other'].includes(data.gender) ? data.gender : 'other'),
       role,
       noKiss: false,
@@ -432,8 +462,8 @@ io.on('connection', (socket) => {
       outfitColor: /^#?[0-9a-fA-F]{6}$/.test(data.outfitColor || '') ? data.outfitColor : null,
       hairStyle: ['short', 'pony', 'bandana'].includes(data.hairStyle) ? data.hairStyle : 'short',
       x: 0, y: 0, z: 0, rotY: 0,
-      uid: data.uid || null, // real logged-in user id, or null for a guest
-      balloons: Number.isFinite(data.startingBalloons) ? data.startingBalloons : 0,
+      uid: auth ? auth.uid : null, // real logged-in user id (from a verified token), or null for a guest
+      balloons: auth ? auth.balloons : 0,
       drivingCarId: null,
       inventory: {},        // itemId -> count
       flowersGiven: 0,
@@ -443,6 +473,7 @@ io.on('connection', (socket) => {
     };
     if (role) roles[role] = socket.id;
     socket.emit('roleResult', { role, denied: !!wantRole && !role });
+    socket.emit('authState', { loggedIn: !!auth, name: auth ? auth.name : null, balloons: players[socket.id].balloons });
     io.emit('roleState', roleStatePayload());
     socket.emit('currentPlayers', players);
     socket.emit('currentCars', occupiedCars); // let the newcomer know which cars are already taken
@@ -451,6 +482,24 @@ io.on('connection', (socket) => {
     socket.emit('radioState', radioPayload());
     socket.emit('treasureSpots', treasureSpots.filter(t => !claimedTreasures.has(t.id)));
     socket.broadcast.emit('playerJoined', players[socket.id]);
+  });
+
+  // A guest logs in through the popup (or the token is refreshed): upgrade this connection without rejoining.
+  socket.on('auth', ({ token } = {}) => {
+    const p = players[socket.id]; if (!p) return;
+    const a = verifyCityToken(token);
+    if (!a) { socket.emit('authState', { loggedIn: false, error: 'bad_token' }); return; }
+    const wasGuest = !p.uid;
+    p.uid = a.uid; p.name = a.name;
+    if (wasGuest) p.balloons = a.balloons;      // keep the live balance on a token refresh
+    socket.emit('authState', { loggedIn: true, name: p.name, balloons: p.balloons, upgraded: wasGuest });
+    io.emit('playerRenamed', { id: socket.id, name: p.name });
+  });
+  socket.on('deauth', () => {
+    const p = players[socket.id]; if (!p) return;
+    p.uid = null; p.balloons = 0; p.name = 'Guest';
+    socket.emit('authState', { loggedIn: false, loggedOut: true, balloons: 0 });
+    io.emit('playerRenamed', { id: socket.id, name: p.name });
   });
 
   socket.on('move', (pos) => {
@@ -676,6 +725,10 @@ io.on('connection', (socket) => {
   socket.on('chatMessage', (text) => {
     const p = players[socket.id];
     if (!p || !text) return;
+    if (!p.uid) { socket.emit('authRequired', { feature: 'chat' }); return; }   // chat is for logged-in members
+    const now = Date.now();
+    if (p.lastChat && now - p.lastChat < 600) return;                          // light flood control
+    p.lastChat = now;
     io.emit('chatMessage', { id: socket.id, name: p.name, text: String(text).slice(0, 200) });
   });
 
