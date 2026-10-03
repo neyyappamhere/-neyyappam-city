@@ -276,6 +276,40 @@
     #job-banner{ top:64px; max-width:70vw; font-size:.72em; }
     #waypoint-readout{ top:100px; }
   }
+
+  /* ================= ACCOUNT / LOGIN POPUP ================= */
+  #account-pill{ pointer-events:auto; display:flex; align-items:center; gap:8px; padding:6px 6px 6px 12px; border-radius:20px; font-size:.8em; font-weight:700;
+    background:var(--card); border:1px solid var(--border); box-shadow:0 6px 18px rgba(0,0,0,.4); color:var(--text); max-width:170px; }
+  #account-name{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #account-pill button{ border:none; border-radius:14px; padding:6px 12px; font-weight:700; font-size:.95em; cursor:pointer; color:#fff; font-family:inherit;
+    background:linear-gradient(135deg,#FE019A,#9b5de5); }
+  #account-pill button.ghost{ background:var(--surface); color:var(--muted); border:1px solid var(--border); }
+  #login-modal{ position:absolute; inset:0; z-index:40; display:none; align-items:center; justify-content:center; padding:16px;
+    background:rgba(5,2,10,.78); backdrop-filter:blur(3px); -webkit-backdrop-filter:blur(3px); overflow-y:auto; }
+  #login-modal.open{ display:flex; }
+  #login-card{ position:relative; background:#fff; color:#333; width:min(100%,400px); border-radius:18px; padding:26px 26px 22px;
+    box-shadow:0 20px 60px rgba(254,1,154,.35); font-family:'Poppins','Space Grotesk',sans-serif; margin:auto; }
+  #login-close{ position:absolute; top:10px; right:12px; width:36px; height:36px; border:none; background:none; font-size:1.1em; color:#999; cursor:pointer; border-radius:50%; }
+  #login-close:hover{ background:#f5f5f5; }
+  #login-head{ display:flex; align-items:center; justify-content:center; gap:8px; margin-bottom:4px; }
+  #login-head img{ width:42px; height:42px; object-fit:contain; }
+  #login-head h2{ margin:0; color:#FE019A; font-size:1.45em; font-weight:700; font-family:'Poppins','Space Grotesk',sans-serif; }
+  #login-why{ text-align:center; font-size:.86em; color:#666; margin:2px 0 16px; line-height:1.4; }
+  #login-error{ display:none; background:#ffebeb; color:#cc0000; border:1px solid #ffcccc; padding:10px 12px; border-radius:10px; font-size:.85em; text-align:center; margin-bottom:12px; }
+  #login-card input[type=email], #login-card input[type=password], #login-card input[type=text]{
+    width:100%; padding:13px 14px; border:1px solid #FFD9EF; border-radius:12px; font-size:16px; color:#333; background:#fff; font-family:inherit; outline:none; margin:5px 0; }
+  #login-card input:focus{ border-color:#FE019A; box-shadow:0 0 0 3px rgba(254,1,154,.18); }
+  .lg-pw{ position:relative; } .lg-pw input{ padding-right:48px !important; }
+  #lg-eye{ position:absolute; right:4px; top:50%; transform:translateY(-50%); width:42px; height:42px; border:none; background:none; font-size:1.15em; cursor:pointer; }
+  .lg-remember{ display:flex; align-items:center; gap:8px; margin:10px 2px 2px; font-size:.86em; color:#333; cursor:pointer; user-select:none; }
+  .lg-remember input{ width:18px; height:18px; accent-color:#FE019A; }
+  #lg-submit{ width:100%; margin-top:16px; padding:14px; min-height:48px; border:none; border-radius:12px; background:#FE019A; color:#fff; font-weight:700; font-size:16px; cursor:pointer; font-family:inherit; }
+  #lg-submit:hover{ background:#D90085; } #lg-submit:disabled{ opacity:.6; cursor:wait; }
+  .lg-links{ text-align:center; font-size:.85em; margin-top:14px; color:#444; line-height:1.9; }
+  .lg-links a{ color:#FE019A; font-weight:700; text-decoration:none; } .lg-links a:hover{ text-decoration:underline; }
+  .lg-guest{ display:block; width:100%; margin-top:6px; padding:10px; background:none; border:none; color:#999; font-size:.82em; cursor:pointer; font-family:inherit; }
+  #chat-input[readonly]{ cursor:pointer; }
+  @media (max-width:420px){ #login-card{ padding:22px 18px 18px; } #account-pill{ max-width:130px; } }
 </style>
 </head>
 <body>
@@ -327,6 +361,7 @@
   </div>
   <div id="hud-right">
     <div id="status-pill"><span class="live-dot"></span> <span id="online-count">1</span> online</div>
+    <div id="account-pill"><span id="account-name">Guest</span><button id="account-action" type="button">Log in</button></div>
     <div id="balloon-pill"><i class="fa-solid fa-circle" style="border-radius:50%;"></i> 🎈 <span id="balloon-val">0</span></div>
   </div>
 </div>
@@ -434,6 +469,33 @@
   <div id="joystick-stick"></div>
 </div>
 
+
+<div id="login-modal" role="dialog" aria-modal="true" aria-labelledby="login-title">
+  <div id="login-card">
+    <button id="login-close" type="button" aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
+    <div id="login-head">
+      <img src="https://neyyappam.com/assets/logos/neyyappamicon.png" alt="" onerror="this.style.display='none'">
+      <h2 id="login-title">Neyyappam.com</h2>
+    </div>
+    <p id="login-why">Log in to use the mic and chat in Neyyappam City.</p>
+    <div id="login-error" role="alert"></div>
+    <form id="login-form" autocomplete="on">
+      <input type="email" id="lg-email" name="email" placeholder="Email Address" autocomplete="username" autocapitalize="off" required>
+      <div class="lg-pw">
+        <input type="password" id="lg-pass" name="password" placeholder="Password" autocomplete="current-password" required>
+        <button type="button" id="lg-eye" aria-label="Show password">👁️</button>
+      </div>
+      <label class="lg-remember"><input type="checkbox" id="lg-remember" checked> Keep me signed in</label>
+      <button type="submit" id="lg-submit">Login</button>
+    </form>
+    <div class="lg-links">
+      <a id="lg-forgot" href="#" target="_blank" rel="noopener">Forgot Password?</a><br>
+      New here? <a id="lg-register" href="#" target="_blank" rel="noopener">Create an account</a>
+    </div>
+    <button type="button" class="lg-guest" id="lg-guest">Continue as guest (no mic or chat)</button>
+  </div>
+</div>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="/socket.io/socket.io.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
@@ -448,8 +510,126 @@
    ========================================================= */
 const params = new URLSearchParams(location.search);
 const handoffName = params.get('name');
-const handoffUid = params.get('uid');
-const handoffBalloons = parseInt(params.get('balloons') || '0', 10);
+const handoffBalloons = 0;   // balances now come only from the signed login token (see AUTH below)
+
+/* =========================================================
+   0b) AUTH — site login shared with login.php (same PHP session + "keep me signed in" cookie).
+   * AUTH_URL / SITE_URL can be overridden: ?auth=https://neyyappam.com/ajax/city_auth.php&site=https://neyyappam.com
+   * city_token is a short-lived signed token; server.js trusts ONLY this, never a uid from the browser.
+   ========================================================= */
+const AUTH_URL = params.get('auth') || window.CITY_AUTH_URL || '/ajax/city_auth.php';
+const SITE_URL = (params.get('site') || window.CITY_SITE_URL || (AUTH_URL.startsWith('http') ? new URL(AUTH_URL).origin : location.origin)).replace(/\/$/, '');
+const auth = { loggedIn: false, name: null, uid: null, token: null, expires: 0, checked: false };
+let pendingAfterLogin = null;
+
+async function authCall(action, body) {
+  const opt = { credentials: 'include', cache: 'no-store' };
+  let url = AUTH_URL + '?action=' + encodeURIComponent(action);
+  if (body) { opt.method = 'POST'; opt.body = new URLSearchParams(Object.assign({ action }, body)); url = AUTH_URL; }
+  const res = await fetch(url, opt);
+  let data = null; try { data = await res.json(); } catch (e) {}
+  if (!data) throw new Error('Login service is not reachable');
+  return data;
+}
+function applyAuth(d) {
+  auth.checked = true;
+  if (d && d.logged_in && d.city_token) {
+    auth.loggedIn = true; auth.token = d.city_token; auth.expires = (d.city_token_expires || 0) * 1000;
+    auth.uid = d.user && d.user.id; auth.name = d.user && d.user.name;
+  } else { auth.loggedIn = false; auth.token = null; auth.uid = null; auth.name = null; auth.expires = 0; }
+  paintAuthUi();
+}
+function paintAuthUi() {
+  const nm = document.getElementById('account-name'), btn = document.getElementById('account-action');
+  if (!nm) return;
+  nm.textContent = auth.loggedIn ? auth.name : 'Guest';
+  btn.textContent = auth.loggedIn ? 'Log out' : 'Log in';
+  btn.className = auth.loggedIn ? 'ghost' : '';
+  const ci = document.getElementById('chat-input');
+  if (ci) { ci.readOnly = !auth.loggedIn; ci.placeholder = auth.loggedIn ? 'Say something...' : '🔒 Log in to chat'; }
+  const ni = document.getElementById('name-input');
+  if (ni) { if (auth.loggedIn) { ni.value = auth.name; ni.readOnly = true; } else { ni.readOnly = false; } }
+  const ss = document.getElementById('save-status');
+  if (ss) {
+    ss.textContent = auth.loggedIn ? 'Signed in as ' + auth.name + ' — balloons are saved to your account, mic & chat unlocked.'
+                                   : 'Guest mode — you can explore, but mic, chat and saving balloons need a login.';
+    ss.classList.toggle('logged-in', auth.loggedIn);
+  }
+}
+async function refreshAuth() {
+  try { applyAuth(await authCall('status')); } catch (e) { if (!auth.checked) { auth.checked = true; paintAuthUi(); } }
+  return auth.loggedIn;
+}
+// Token is valid for 2h; refresh it well before it runs out, and whenever the tab comes back to the foreground.
+async function keepTokenFresh() {
+  if (!auth.loggedIn) return;
+  if (auth.expires - Date.now() < 20 * 60 * 1000) {
+    const wasIn = auth.loggedIn; await refreshAuth();
+    if (auth.loggedIn && typeof socket !== 'undefined' && socket.connected && inGame()) socket.emit('auth', { token: auth.token });
+    if (wasIn && !auth.loggedIn) showToast('🔒 You were signed out — please log in again');
+  }
+}
+setInterval(keepTokenFresh, 5 * 60 * 1000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) keepTokenFresh(); });
+
+// ---- login popup ----
+const loginModal = document.getElementById('login-modal');
+function openLogin(why, after) {
+  pendingAfterLogin = after || null;
+  document.getElementById('login-why').textContent = why || 'Log in to use the mic and chat in Neyyappam City.';
+  const e = document.getElementById('login-error'); e.style.display = 'none';
+  document.getElementById('lg-forgot').href = SITE_URL + '/forgot_password.php';
+  document.getElementById('lg-register').href = SITE_URL + '/register.php';
+  loginModal.classList.add('open');
+  setTimeout(() => document.getElementById('lg-email').focus(), 60);
+}
+function closeLogin() { loginModal.classList.remove('open'); pendingAfterLogin = null; }
+function requireLogin(feature, after) {
+  if (auth.loggedIn) { after && after(); return true; }
+  openLogin(feature === 'mic' ? '🎤 Log in to turn on your microphone.' : feature === 'chat' ? '💬 Log in to chat with other players.' : 'Log in to continue.', after);
+  return false;
+}
+document.getElementById('login-close').onclick = closeLogin;
+document.getElementById('lg-guest').onclick = closeLogin;
+loginModal.addEventListener('mousedown', e => { if (e.target === loginModal) closeLogin(); });
+addEventListener('keydown', e => { if (e.key === 'Escape' && loginModal.classList.contains('open')) closeLogin(); });
+document.getElementById('lg-eye').onclick = function () {
+  const f = document.getElementById('lg-pass'), show = f.type === 'password';
+  f.type = show ? 'text' : 'password'; this.textContent = show ? '🕶️' : '👁️'; this.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+};
+document.getElementById('login-form').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const btn = document.getElementById('lg-submit'), err = document.getElementById('login-error');
+  btn.disabled = true; btn.textContent = 'Logging in…'; err.style.display = 'none';
+  try {
+    const d = await authCall('login', { email: document.getElementById('lg-email').value.trim(), password: document.getElementById('lg-pass').value, remember: document.getElementById('lg-remember').checked ? '1' : '0' });
+    if (!d.ok || !d.logged_in) {
+      err.innerHTML = '';
+      err.textContent = d.error || 'Login failed';
+      if (d.verify_url) { const a = document.createElement('a'); a.href = SITE_URL + '/' + d.verify_url; a.target = '_blank'; a.textContent = ' Verify now'; a.style.color = '#FE019A'; err.appendChild(a); }
+      err.style.display = 'block';
+    } else {
+      document.getElementById('lg-pass').value = '';
+      applyAuth(d);
+      const after = pendingAfterLogin; closeLogin();
+      showToast('✅ Welcome, ' + auth.name + '!');
+      if (typeof socket !== 'undefined' && socket.connected && inGame()) socket.emit('auth', { token: auth.token });
+      if (after) after();
+    }
+  } catch (e) { err.textContent = e.message || 'Could not reach the login service'; err.style.display = 'block'; }
+  btn.disabled = false; btn.textContent = 'Login';
+});
+document.getElementById('account-action').onclick = async () => {
+  if (!auth.loggedIn) { openLogin('Log in to save your balloons and use mic & chat.'); return; }
+  if (!confirm('Log out of Neyyappam?')) return;
+  try { await authCall('logout', {}); } catch (e) {}
+  applyAuth(null);
+  if (typeof socket !== 'undefined' && socket.connected && inGame()) socket.emit('deauth');
+  if (micOn) { micOn = false; paintVoiceBtns(); syncVoice(); }
+  document.getElementById('balloon-val').textContent = '0';
+  showToast('👋 Logged out');
+};
+refreshAuth();
 
 /* =========================================================
    1) CITY GENERATION — bright low-poly daytime style (blue sky, brick buildings, toon cars)
@@ -1988,11 +2168,7 @@ document.querySelectorAll('.swatch').forEach(btn => {
 });
 document.querySelector('.swatch[data-color="#9b5de5"]').classList.add('selected');
 
-if (handoffUid) {
-  document.getElementById('save-status').textContent = 'Signed in — balloons collected here are saved to your account.';
-  document.getElementById('save-status').classList.add('logged-in');
-}
-if (handoffName) document.getElementById('name-input').value = handoffName;
+if (handoffName && !auth.loggedIn) document.getElementById('name-input').value = handoffName;
 
 /* =========================================================
    4) MOVEMENT
@@ -2338,7 +2514,7 @@ document.getElementById('join-btn').onclick = enterCity;
 document.getElementById('name-input').addEventListener('keydown', e => { if (e.key==='Enter') enterCity(); });
 
 function enterCity() {
-  myName = document.getElementById('name-input').value.trim() || 'Guest';
+  myName = auth.loggedIn ? auth.name : (document.getElementById('name-input').value.trim() || 'Guest');
   scene.remove(myAvatar);
   if (myRole === 'chayakkaran') myGender = 'male'; else if (myRole === 'karavakkari') myGender = 'female';
   myAvatar = makeAvatarMesh(myGender, myOutfitColor, myHairStyle, myRole);
@@ -2346,8 +2522,8 @@ function enterCity() {
   else if (myRole === 'karavakkari') { myAvatar.position.set(-6, 0.27, -5.5); camYaw = 0; }
   scene.add(myAvatar);
   document.getElementById('name-gate').style.display = 'none';
-  setTimeout(() => showToast('🔇 Sound and 🎤 mic are OFF — tap the round icons at top-left to turn them on'), 800);
-  socket.emit('join', { name: myName, gender: myGender, outfitColor: myOutfitColor, hairStyle: myHairStyle, role: myRole, uid: handoffUid || null, startingBalloons: handoffBalloons });
+  setTimeout(() => showToast(auth.loggedIn ? '🔇 Sound and 🎤 mic are OFF — tap the round icons to turn them on' : '🔇 Sound is OFF. Log in to use 🎤 mic and 💬 chat'), 800);
+  socket.emit('join', { name: myName, gender: myGender, outfitColor: myOutfitColor, hairStyle: myHairStyle, role: myRole, token: auth.loggedIn ? auth.token : null });
 }
 
 function refreshOnlineCount(){ onlineEl.textContent = Object.keys(others).length + 1; }
@@ -2576,9 +2752,10 @@ function renderInventory() {
 
 function addOtherPlayer(p) {
   const group = makeAvatarMesh(p.gender, p.outfitColor, p.hairStyle, p.role);
-  group.add(makeLabel(p.name + (p.role === 'chayakkaran' ? ' 🍵' : p.role === 'karavakkari' ? ' 🥛' : '')));
+  const label = makeLabel(p.name + (p.role === 'chayakkaran' ? ' 🍵' : p.role === 'karavakkari' ? ' 🥛' : ''));
+  group.add(label);
   scene.add(group);
-  others[p.id] = { group, target: p, name: p.name, role: p.role };
+  others[p.id] = { group, label, target: p, name: p.name, role: p.role };
 }
 
 setInterval(() => {
@@ -2595,8 +2772,11 @@ const chatInput = document.getElementById('chat-input');
 const chatLog = document.getElementById('chat-log');
 const chatBox = document.getElementById('chat-box');
 document.getElementById('chat-toggle').onclick = () => chatBox.classList.toggle('open');
+chatInput.addEventListener('focus', () => { if (!auth.loggedIn) { chatInput.blur(); requireLogin('chat', () => chatInput.focus()); } });
+chatInput.addEventListener('pointerdown', () => { if (!auth.loggedIn) requireLogin('chat', () => chatInput.focus()); });
 chatForm.addEventListener('submit', e => {
   e.preventDefault();
+  if (!auth.loggedIn) { requireLogin('chat'); return; }
   const text = chatInput.value.trim();
   if (!text) return;
   socket.emit('chatMessage', text);
@@ -2608,6 +2788,20 @@ socket.on('chatMessage', ({ name, text }) => {
   chatLog.appendChild(line);
   chatLog.scrollTop = chatLog.scrollHeight;
 });
+socket.on('authRequired', ({ feature }) => { requireLogin(feature === 'mic' ? 'mic' : 'chat'); });
+socket.on('authState', (st) => {
+  if (st.balloons !== undefined && st.loggedIn !== false) { balloonEl.textContent = st.balloons; refreshAffordability(); }
+  if (st.loggedOut) balloonEl.textContent = '0';
+  if (st.error === 'bad_token') { refreshAuth(); }
+});
+socket.on('playerRenamed', ({ id, name }) => {
+  const o = others[id]; if (!o) return;
+  o.name = name;
+  if (o.label) o.group.remove(o.label);
+  o.label = makeLabel(name + (o.role === 'chayakkaran' ? ' 🍵' : o.role === 'karavakkari' ? ' 🥛' : ''));
+  o.group.add(o.label);
+});
+socket.on('connect', () => { if (inGame() && auth.loggedIn) socket.emit('auth', { token: auth.token }); });
 function escapeHtml(s){ return s.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
 
 /* =========================================================
@@ -2629,8 +2823,12 @@ function applyRemoteAudio() {
   document.querySelectorAll('audio.lk-voice-audio').forEach(el => { el.muted = !soundOn; if (soundOn && el.paused) el.play().catch(() => {}); });
 }
 async function connectVoice() {
-  const res = await fetch(`/livekit-token?identity=${encodeURIComponent(socket.id)}`);
+  if (!auth.loggedIn) throw new Error('log in first');
+  const getTok = () => fetch(`/livekit-token?identity=${encodeURIComponent(socket.id)}`, { headers: { Authorization: 'Bearer ' + auth.token } });
+  let res = await getTok();
+  if (res.status === 401) { await refreshAuth(); if (auth.loggedIn) res = await getTok(); }   // token may have just expired
   let data; try { data = await res.json(); } catch (e) { throw new Error('the voice service is not reachable on this server'); }
+  if (res.status === 401) { const e = new Error('please log in again'); e.needLogin = true; throw e; }
   if (!res.ok || !data.token) throw new Error(data.error || 'no voice token');
   const room = new LivekitClient.Room({ adaptiveStream: true, dynacast: true });
   room.on(LivekitClient.RoomEvent.TrackSubscribed, (track) => {
@@ -2647,19 +2845,24 @@ async function connectVoice() {
 // Mic and Sound are independent: you can listen to others with your mic off. The voice room is joined only when either is on.
 function syncVoice() {
   voiceChain = voiceChain.then(async () => {
-    const want = micOn || soundOn;
+    const want = (micOn || soundOn) && auth.loggedIn;   // the voice room is members-only
     try {
       if (want && !lkRoom) await connectVoice();
       if (!want && lkRoom) { const r = lkRoom; lkRoom = null; await r.disconnect(); document.querySelectorAll('audio.lk-voice-audio').forEach(el => el.remove()); }
       if (lkRoom) { await lkRoom.localParticipant.setMicrophoneEnabled(micOn); applyRemoteAudio(); }
     } catch (e) {
+      if (e && e.needLogin) openLogin('🎤 Your session ended — log in again to use voice.');
       if (micOn) { micOn = false; if (lkRoom) { try { await lkRoom.localParticipant.setMicrophoneEnabled(false); } catch (e2) {} } }
       showToast('🎤 Voice chat unavailable: ' + (e.message || e));
       paintVoiceBtns();
     }
   });
 }
-micBtn.onclick = () => { micOn = !micOn; paintVoiceBtns(); syncVoice(); };
+micBtn.onclick = () => {
+  const toggle = () => { micOn = !micOn; paintVoiceBtns(); syncVoice(); };
+  if (!micOn && !auth.loggedIn) { requireLogin('mic', () => { micOn = true; paintVoiceBtns(); syncVoice(); }); return; }   // turning ON needs a login
+  toggle();
+};
 soundBtn.onclick = () => {
   soundOn = !soundOn;
   if (soundOn) { ensureAudio(); if (radioLoaded !== -1) radioAudio.play().catch(() => {}); }
