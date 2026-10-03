@@ -448,23 +448,28 @@ function roleStatePayload() {
 
 // =====================================================================
 // PRIVATE VOICE ROOMS
-//  - members only; a host invites 1-3 online members to a themed place (Happy Cup, Sarovaram Park, ...)
-//  - every room is its own LiveKit room, so nobody outside can hear it
-//  - admins can look at the live list and join VISIBLY as a listen-only "Moderator"
-//    (participants get a banner), and every event is written to the DB via ajax/private_room_log.php
-//  - audio is never recorded
+//  - a member creates a room at a place -> the server makes a Room ID + 6-digit passcode
+//  - partners find the room by ID (or open the share link) and must enter the passcode
+//  - each room is its own LiveKit room, so nobody outside can hear it; max people is chosen by the host (2-5)
+//  - admins can look at the live list and join VISIBLY as a listen-only "Moderator" (players are told),
+//    and every event is written to the DB via ajax/private_room_log.php. Audio is never recorded.
 // =====================================================================
-const PRIVATE_PLACES = {
+const PRIVATE_PLACES = {           // <<< ADD MORE AREAS HERE:  id: { name: 'Shown name', emoji: '🌴' }
   happycup:  { name: 'Happy Cup',      emoji: '☕' },
   sarovaram: { name: 'Sarovaram Park', emoji: '🌳' },
   beach:     { name: 'Beach',          emoji: '🏖️' },
   hugamug:   { name: 'Hug a Mug',      emoji: '🫶' }
 };
-const PRIVATE_MAX = 4;                   // including the host
-const PRIVATE_INVITE_TTL_MS = 60 * 1000; // an unanswered invite closes the room after 60s
+const PRIVATE_MAX = 5;                         // most people allowed in one room (including the host)
+const PRIVATE_IDLE_MS = 30 * 60 * 1000;        // a room with fewer than 2 people for 30 minutes is closed
 const PRIVATE_LOG_ENDPOINT = process.env.PRIVATE_LOG_ENDPOINT || 'https://neyyappam.com/ajax/private_room_log.php';
-const privateRooms = {};                 // id -> { id, place, hostSid, members:Set, invited:Set, info:Map(sid->{uid,name,username}), startedAt, timer }
+const ROOM_ID_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';   // no 0/O/1/I so IDs are easy to read out
+const privateRooms = {};                       // ID -> { id, place, passcode, capacity, hostSid, members:Set, info:Map(sid->{uid,name,username}), startedAt, aloneSince }
+const privAttempts = new Map();                // "uid:roomId" -> { n, until }   (wrong-passcode lockout)
 
+function newRoomId() { for (;;) { let id = ''; for (let i = 0; i < 6; i++) id += ROOM_ID_CHARS[crypto.randomInt(ROOM_ID_CHARS.length)]; if (!privateRooms[id]) return id; } }
+function newPasscode() { return String(crypto.randomInt(0, 1000000)).padStart(6, '0'); }
+function normRoomId(x) { return String(x || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8); }
 function logPrivate(ev) {
   try {
     fetch(PRIVATE_LOG_ENDPOINT, { method: 'POST', body: new URLSearchParams(Object.assign({ secret: SHARED_SECRET }, ev)) })
@@ -473,35 +478,43 @@ function logPrivate(ev) {
 }
 function roomOfSid(sid) { return Object.values(privateRooms).find(r => r.members.has(sid)) || null; }
 function privatePublic(r) {
-  const place = PRIVATE_PLACES[r.place];
+  const place = PRIVATE_PLACES[r.place] || { name: r.place, emoji: '🔒' };
   return {
-    id: r.id, place: r.place, placeName: place.name, emoji: place.emoji, startedAt: r.startedAt, hostSid: r.hostSid,
+    id: r.id, place: r.place, placeName: place.name, emoji: place.emoji, capacity: r.capacity, startedAt: r.startedAt, hostSid: r.hostSid,
     members: [...r.members].map(sid => ({ sid, name: r.info.get(sid).name, username: r.info.get(sid).username }))
   };
 }
 function privateBroadcast(r) { const pub = privatePublic(r); r.members.forEach(sid => io.to(sid).emit('privateRoomState', pub)); }
 function closePrivateRoom(r, reason, adminId) {
   if (!privateRooms[r.id]) return;
-  clearTimeout(r.timer);
   delete privateRooms[r.id];
   r.members.forEach(sid => io.to(sid).emit('privateRoomClosed', { reason }));
-  r.invited.forEach(sid => io.to(sid).emit('privateInviteCancelled', { roomId: r.id }));
   logPrivate({ event: 'room_end', room_id: r.id, place: r.place, admin_id: adminId || '', detail: reason });
 }
 function leavePrivate(sid, reason) {
   const r = roomOfSid(sid); if (!r) return;
   const who = r.info.get(sid) || {};
   r.members.delete(sid);
+  if (r.hostSid === sid && r.members.size) r.hostSid = [...r.members][0];   // someone else becomes host
   logPrivate({ event: 'member_leave', room_id: r.id, place: r.place, user_id: who.uid || '', detail: reason || 'left' });
-  if (r.members.size < 2 && r.invited.size === 0) closePrivateRoom(r, 'ended');
+  if (r.members.size === 0) closePrivateRoom(r, 'ended');
   else privateBroadcast(r);
 }
 function privateInfoForAdmin(r) {
   const pub = privatePublic(r);
-  return { id: r.id, place: r.place, placeName: pub.placeName, startedAt: r.startedAt,
-           members: [...r.members].map(sid => ({ uid: r.info.get(sid).uid, name: r.info.get(sid).name, username: r.info.get(sid).username })),
-           pendingInvites: r.invited.size };
+  return { id: r.id, place: r.place, placeName: pub.placeName, capacity: r.capacity, startedAt: r.startedAt,
+           members: [...r.members].map(sid => ({ uid: r.info.get(sid).uid, name: r.info.get(sid).name, username: r.info.get(sid).username })) };
 }
+// close rooms that have sat with fewer than 2 people for too long
+setInterval(() => {
+  const now = Date.now();
+  Object.values(privateRooms).forEach(r => {
+    if (r.members.size >= 2) { r.aloneSince = null; return; }
+    if (!r.aloneSince) { r.aloneSince = now; return; }
+    if (now - r.aloneSince > PRIVATE_IDLE_MS) closePrivateRoom(r, 'expired');
+  });
+  privAttempts.forEach((v, k) => { if (v.until && v.until < now) privAttempts.delete(k); });
+}, 60 * 1000);
 
 // ---- admin API (called only by your PHP admin page, with the shared secret) ----
 function adminAuth(req, res, next) {
@@ -611,54 +624,72 @@ io.on('connection', (socket) => {
 
 
   // ---------------- Private voice rooms ----------------
-  socket.on('privateInvite', (d = {}, cb) => {
-    cb = typeof cb === 'function' ? cb : () => {};
-    const p = players[socket.id];
-    if (!p || !p.uid) return cb({ ok: false, error: 'Log in to start a private room.' });
-    if (roomOfSid(socket.id)) return cb({ ok: false, error: 'You are already in a private room.' });
-    if (!PRIVATE_PLACES[d.place]) return cb({ ok: false, error: 'Pick a place first.' });
-    const now = Date.now();
-    if (p.lastPrivInvite && now - p.lastPrivInvite < 3000) return cb({ ok: false, error: 'Please wait a moment.' });
-    p.lastPrivInvite = now;
-    const targets = [...new Set(Array.isArray(d.targets) ? d.targets : [])]
-      .filter(sid => sid !== socket.id && players[sid] && players[sid].uid && !roomOfSid(sid))
-      .slice(0, PRIVATE_MAX - 1);
-    if (!targets.length) return cb({ ok: false, error: 'Pick at least one friend who is online and logged in.' });
-    const id = crypto.randomBytes(6).toString('hex');
-    const r = { id, place: d.place, hostSid: socket.id, members: new Set([socket.id]), invited: new Set(targets),
-                info: new Map(), startedAt: Date.now(), timer: null };
-    r.info.set(socket.id, { uid: p.uid, name: p.name, username: p.username });
-    privateRooms[id] = r;
-    logPrivate({ event: 'room_start', room_id: id, place: r.place, user_id: p.uid, detail: 'invited ' + targets.length });
-    targets.forEach(sid => {
-      const t = players[sid];
-      r.info.set(sid, { uid: t.uid, name: t.name, username: t.username });
-      io.to(sid).emit('privateInvited', { roomId: id, place: r.place, placeName: PRIVATE_PLACES[r.place].name, emoji: PRIVATE_PLACES[r.place].emoji,
-                                          from: { name: p.name, username: p.username } });
-    });
-    r.timer = setTimeout(() => {
-      const room = privateRooms[id]; if (!room) return;
-      room.invited.forEach(sid => io.to(sid).emit('privateInviteCancelled', { roomId: id }));
-      room.invited.clear();
-      if (room.members.size < 2) closePrivateRoom(room, 'no_answer');
-    }, PRIVATE_INVITE_TTL_MS);
-    privateBroadcast(r);
-    cb({ ok: true, roomId: id });
+  socket.on('privateConfig', (cb) => {
+    if (typeof cb !== 'function') return;
+    cb({ places: Object.entries(PRIVATE_PLACES).map(([id, v]) => ({ id, name: v.name, emoji: v.emoji })), max: PRIVATE_MAX });
   });
 
-  socket.on('privateRespond', (d = {}) => {
-    const p = players[socket.id]; const r = privateRooms[d.roomId];
-    if (!p || !p.uid || !r || !r.invited.has(socket.id)) return;
-    r.invited.delete(socket.id);
-    if (d.accept && !roomOfSid(socket.id) && r.members.size < PRIVATE_MAX) {
-      r.members.add(socket.id);
-      r.info.set(socket.id, { uid: p.uid, name: p.name, username: p.username });
-      logPrivate({ event: 'member_join', room_id: r.id, place: r.place, user_id: p.uid });
-      privateBroadcast(r);
-    } else {
-      io.to(r.hostSid).emit('privateDeclined', { name: p.name });
-      if (r.members.size < 2 && r.invited.size === 0) closePrivateRoom(r, 'declined');
+  // Create: server picks the Room ID and the passcode. Only the creator is told the passcode.
+  socket.on('privateCreate', (d = {}, cb) => {
+    cb = typeof cb === 'function' ? cb : () => {};
+    const p = players[socket.id];
+    if (!p || !p.uid) return cb({ ok: false, error: 'Log in to create a private room.' });
+    if (roomOfSid(socket.id)) return cb({ ok: false, error: 'You are already in a private room. Leave it first.' });
+    if (!PRIVATE_PLACES[d.place]) return cb({ ok: false, error: 'Pick a place first.' });
+    const now = Date.now();
+    if (p.lastPrivCreate && now - p.lastPrivCreate < 3000) return cb({ ok: false, error: 'Please wait a moment.' });
+    p.lastPrivCreate = now;
+    const capacity = Math.max(2, Math.min(PRIVATE_MAX, parseInt(d.capacity, 10) || 2));
+    const id = newRoomId();
+    const r = { id, place: d.place, passcode: newPasscode(), capacity, hostSid: socket.id, members: new Set([socket.id]),
+                info: new Map([[socket.id, { uid: p.uid, name: p.name, username: p.username }]]), startedAt: now, aloneSince: now };
+    privateRooms[id] = r;
+    logPrivate({ event: 'room_start', room_id: id, place: r.place, user_id: p.uid, detail: 'capacity ' + capacity });
+    privateBroadcast(r);
+    const pl = PRIVATE_PLACES[r.place];
+    cb({ ok: true, roomId: id, passcode: r.passcode, capacity, place: r.place, placeName: pl.name, emoji: pl.emoji });
+  });
+
+  // Search by Room ID: tells you the place and how full it is (never who is inside, never the passcode).
+  socket.on('privateLookup', (d = {}, cb) => {
+    cb = typeof cb === 'function' ? cb : () => {};
+    const p = players[socket.id];
+    if (!p || !p.uid) return cb({ ok: false, error: 'Log in to search for a room.' });
+    const now = Date.now();
+    p.lookups = (p.lookups || []).filter(t => now - t < 60000);
+    if (p.lookups.length >= 12) return cb({ ok: false, error: 'Too many searches. Wait a minute and try again.' });
+    p.lookups.push(now);
+    const r = privateRooms[normRoomId(d.roomId)];
+    if (!r) return cb({ ok: false, error: 'No open room with that ID.' });
+    const pl = PRIVATE_PLACES[r.place] || { name: r.place, emoji: '🔒' };
+    cb({ ok: true, roomId: r.id, placeName: pl.name, emoji: pl.emoji, count: r.members.size, capacity: r.capacity, full: r.members.size >= r.capacity });
+  });
+
+  // Join: Room ID + passcode. 5 wrong passcodes lock that member out of that room for 10 minutes.
+  socket.on('privateJoin', (d = {}, cb) => {
+    cb = typeof cb === 'function' ? cb : () => {};
+    const p = players[socket.id];
+    if (!p || !p.uid) return cb({ ok: false, error: 'Log in to join a private room.' });
+    if (roomOfSid(socket.id)) return cb({ ok: false, error: 'You are already in a private room. Leave it first.' });
+    const id = normRoomId(d.roomId); const r = privateRooms[id];
+    if (!r) return cb({ ok: false, error: 'No open room with that ID.' });
+    const key = p.uid + ':' + id; const now = Date.now();
+    const a = privAttempts.get(key) || { n: 0, until: 0 };
+    if (a.until > now) return cb({ ok: false, error: 'Too many wrong passcodes. Try again in ' + Math.ceil((a.until - now) / 60000) + ' min.' });
+    const given = Buffer.from(String(d.passcode || '').replace(/\D/g, '').padStart(6, '0').slice(0, 6));
+    const want = Buffer.from(r.passcode);
+    if (given.length !== want.length || !crypto.timingSafeEqual(given, want)) {
+      a.n += 1; if (a.n >= 5) { a.until = now + 10 * 60 * 1000; a.n = 0; }
+      privAttempts.set(key, a);
+      return cb({ ok: false, error: 'Wrong passcode.' });
     }
+    if (r.members.size >= r.capacity) return cb({ ok: false, error: 'This room is full (' + r.capacity + ' people).' });
+    privAttempts.delete(key);
+    r.members.add(socket.id);
+    r.info.set(socket.id, { uid: p.uid, name: p.name, username: p.username });
+    logPrivate({ event: 'member_join', room_id: r.id, place: r.place, user_id: p.uid });
+    privateBroadcast(r);
+    cb({ ok: true, roomId: r.id });
   });
 
   // Each member gets a token for ONLY their own room.
@@ -913,8 +944,6 @@ io.on('connection', (socket) => {
 
   socket.on('disconnect', () => {
     leavePrivate(socket.id, 'disconnected');
-    // pending invites to this socket: drop them
-    Object.values(privateRooms).forEach(r => { if (r.invited.delete(socket.id) && r.members.size < 2 && r.invited.size === 0) closePrivateRoom(r, 'declined'); });
     const p = players[socket.id];
     if (p && p.drivingCarId) {
       delete occupiedCars[p.drivingCarId];
