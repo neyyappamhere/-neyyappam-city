@@ -464,6 +464,34 @@ const PRIVATE_MAX = 5;                         // most people allowed in one roo
 const PRIVATE_IDLE_MS = 30 * 60 * 1000;        // a room with fewer than 2 people for 30 minutes is closed
 const PRIVATE_LOG_ENDPOINT = process.env.PRIVATE_LOG_ENDPOINT || 'https://neyyappam.com/ajax/private_room_log.php';
 const ROOM_ID_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';   // no 0/O/1/I so IDs are easy to read out
+// Each private room is its own "space": a themed area far from the city. Players in one space never see, hear or message players in another.
+const PRIVATE_ORIGIN = { x: 5000, z: 5000 };   // must match the client; far outside the city so nothing overlaps
+const publicPositions = {};                     // sid -> where to put a player back when they leave a private room
+const spaceRoom = (p) => 'space:' + ((p && p.space) || 'public');
+function enterSpace(sid, space, place) {
+  const p = players[sid]; const sock = io.sockets.sockets.get(sid);
+  if (!p || !sock) return;
+  const old = p.space || 'public';
+  if (old === space) return;
+  sock.to('space:' + old).emit('playerLeft', sid);            // vanish from the old space
+  sock.leave('space:' + old); sock.join('space:' + space);
+  let spawn;
+  if (space === 'public') {
+    spawn = publicPositions[sid] || { x: 0, y: 0, z: 0, rotY: 0 };
+    delete publicPositions[sid];
+  } else {
+    if (old === 'public') publicPositions[sid] = { x: p.x, y: p.y, z: p.z, rotY: p.rotY };
+    const a = Math.random() * Math.PI * 2;
+    spawn = { x: PRIVATE_ORIGIN.x + Math.cos(a) * 3, y: 0, z: PRIVATE_ORIGIN.z + Math.sin(a) * 3, rotY: 0 };
+  }
+  p.x = spawn.x; p.y = spawn.y; p.z = spawn.z; p.rotY = spawn.rotY;
+  p.space = space;
+  const list = {};
+  Object.values(players).forEach(q => { if ((q.space || 'public') === space) list[q.id] = q; });
+  sock.emit('spaceChanged', { place: space === 'public' ? null : place, spawn });
+  sock.emit('currentPlayers', list);                           // only the people in the new space
+  sock.to('space:' + space).emit('playerJoined', p);
+}
 const privateRooms = {};                       // ID -> { id, place, passcode, capacity, hostSid, members:Set, info:Map(sid->{uid,name,username}), startedAt, aloneSince }
 const privAttempts = new Map();                // "uid:roomId" -> { n, until }   (wrong-passcode lockout)
 
@@ -489,6 +517,7 @@ function closePrivateRoom(r, reason, adminId) {
   if (!privateRooms[r.id]) return;
   delete privateRooms[r.id];
   r.members.forEach(sid => io.to(sid).emit('privateRoomClosed', { reason }));
+  [...r.members].forEach(sid => enterSpace(sid, 'public'));    // everyone goes back to the city
   logPrivate({ event: 'room_end', room_id: r.id, place: r.place, admin_id: adminId || '', detail: reason });
 }
 function leavePrivate(sid, reason) {
@@ -497,6 +526,7 @@ function leavePrivate(sid, reason) {
   r.members.delete(sid);
   if (r.hostSid === sid && r.members.size) r.hostSid = [...r.members][0];   // someone else becomes host
   logPrivate({ event: 'member_leave', room_id: r.id, place: r.place, user_id: who.uid || '', detail: reason || 'left' });
+  enterSpace(sid, 'public');                                   // back to the city (no-op if the socket is already gone)
   if (r.members.size === 0) closePrivateRoom(r, 'ended');
   else privateBroadcast(r);
 }
@@ -581,17 +611,19 @@ io.on('connection', (socket) => {
       treasuresFound: 0,
       collectibles: []
     };
+    players[socket.id].space = 'public';
+    socket.join('space:public');
     if (role) roles[role] = socket.id;
     socket.emit('roleResult', { role, denied: !!wantRole && !role });
     socket.emit('authState', { loggedIn: !!auth, name: auth ? auth.name : null, username: auth ? auth.username : null, balloons: players[socket.id].balloons });
     io.emit('roleState', roleStatePayload());
-    socket.emit('currentPlayers', players);
+    socket.emit('currentPlayers', Object.fromEntries(Object.entries(players).filter(([, q]) => (q.space || 'public') === 'public')));
     socket.emit('currentCars', occupiedCars); // let the newcomer know which cars are already taken
     socket.emit('deliveryUpdated', deliveryJob);
     socket.emit('shopCatalog', ITEMS);
     socket.emit('radioState', radioPayload());
     socket.emit('treasureSpots', treasureSpots.filter(t => !claimedTreasures.has(t.id)));
-    socket.broadcast.emit('playerJoined', players[socket.id]);
+    socket.to('space:public').emit('playerJoined', players[socket.id]);
   });
 
   // A guest logs in through the popup (or the token is refreshed): upgrade this connection without rejoining.
@@ -603,14 +635,14 @@ io.on('connection', (socket) => {
     p.uid = a.uid; p.name = a.name; p.username = a.username;
     if (wasGuest) p.balloons = a.balloons;      // keep the live balance on a token refresh
     socket.emit('authState', { loggedIn: true, name: p.name, username: p.username, balloons: p.balloons, upgraded: wasGuest });
-    io.emit('playerRenamed', { id: socket.id, name: p.name, username: p.username });
+    io.to(spaceRoom(p)).emit('playerRenamed', { id: socket.id, name: p.name, username: p.username });
   });
   socket.on('deauth', () => {
     const p = players[socket.id]; if (!p) return;
     leavePrivate(socket.id, 'logout');
     p.uid = null; p.username = null; p.balloons = 0; p.name = 'Guest';
     socket.emit('authState', { loggedIn: false, loggedOut: true, balloons: 0 });
-    io.emit('playerRenamed', { id: socket.id, name: p.name });
+    io.to(spaceRoom(p)).emit('playerRenamed', { id: socket.id, name: p.name });
   });
 
   // Change look in game settings (the NAME can never be changed here - it comes from the account).
@@ -619,7 +651,7 @@ io.on('connection', (socket) => {
     if (!p.role && ['male', 'female', 'other'].includes(d.gender)) p.gender = d.gender;   // tea-shop roles keep their fixed gender
     if (/^#?[0-9a-fA-F]{6}$/.test(d.outfitColor || '')) p.outfitColor = d.outfitColor;
     if (['short', 'pony', 'bandana'].includes(d.hairStyle)) p.hairStyle = d.hairStyle;
-    socket.broadcast.emit('playerLook', { id: socket.id, gender: p.gender, outfitColor: p.outfitColor, hairStyle: p.hairStyle });
+    socket.to(spaceRoom(p)).emit('playerLook', { id: socket.id, gender: p.gender, outfitColor: p.outfitColor, hairStyle: p.hairStyle });
   });
 
 
@@ -635,6 +667,7 @@ io.on('connection', (socket) => {
     const p = players[socket.id];
     if (!p || !p.uid) return cb({ ok: false, error: 'Log in to create a private room.' });
     if (roomOfSid(socket.id)) return cb({ ok: false, error: 'You are already in a private room. Leave it first.' });
+    if (p.drivingCarId) return cb({ ok: false, error: 'Get out of your vehicle first.' });
     if (!PRIVATE_PLACES[d.place]) return cb({ ok: false, error: 'Pick a place first.' });
     const now = Date.now();
     if (p.lastPrivCreate && now - p.lastPrivCreate < 3000) return cb({ ok: false, error: 'Please wait a moment.' });
@@ -646,6 +679,7 @@ io.on('connection', (socket) => {
     privateRooms[id] = r;
     logPrivate({ event: 'room_start', room_id: id, place: r.place, user_id: p.uid, detail: 'capacity ' + capacity });
     privateBroadcast(r);
+    enterSpace(socket.id, 'priv:' + id, r.place);
     const pl = PRIVATE_PLACES[r.place];
     cb({ ok: true, roomId: id, passcode: r.passcode, capacity, place: r.place, placeName: pl.name, emoji: pl.emoji });
   });
@@ -671,6 +705,7 @@ io.on('connection', (socket) => {
     const p = players[socket.id];
     if (!p || !p.uid) return cb({ ok: false, error: 'Log in to join a private room.' });
     if (roomOfSid(socket.id)) return cb({ ok: false, error: 'You are already in a private room. Leave it first.' });
+    if (p.drivingCarId) return cb({ ok: false, error: 'Get out of your vehicle first.' });
     const id = normRoomId(d.roomId); const r = privateRooms[id];
     if (!r) return cb({ ok: false, error: 'No open room with that ID.' });
     const key = p.uid + ':' + id; const now = Date.now();
@@ -689,6 +724,7 @@ io.on('connection', (socket) => {
     r.info.set(socket.id, { uid: p.uid, name: p.name, username: p.username });
     logPrivate({ event: 'member_join', room_id: r.id, place: r.place, user_id: p.uid });
     privateBroadcast(r);
+    enterSpace(socket.id, 'priv:' + r.id, r.place);
     cb({ ok: true, roomId: r.id });
   });
 
@@ -712,7 +748,7 @@ io.on('connection', (socket) => {
     const p = players[socket.id];
     if (!p) return;
     p.x = pos.x; p.y = pos.y; p.z = pos.z; p.rotY = pos.rotY;
-    socket.broadcast.emit('playerMoved', p);
+    socket.to(spaceRoom(p)).emit('playerMoved', p);
   });
 
   // --- Vehicles ---
@@ -781,7 +817,7 @@ io.on('connection', (socket) => {
   // --- Gift a carried item to a nearby player ---
   socket.on('giftItem', ({ targetId, itemId }) => {
     const p = players[socket.id], t = players[targetId];
-    if (!p || !t || !p.inventory[itemId]) return;
+    if (!p || !t || !p.inventory[itemId] || t.space !== p.space) return;
     if (Math.hypot(p.x - t.x, p.z - t.z) > 3.5) { socket.emit('giftDenied', { reason: 'range' }); return; }
     p.inventory[itemId] -= 1;
     if (p.inventory[itemId] <= 0) delete p.inventory[itemId];
@@ -794,7 +830,7 @@ io.on('connection', (socket) => {
   // --- Give a flower to a nearby player (consumes one from inventory) ---
   socket.on('giveFlower', ({ targetId }) => {
     const p = players[socket.id], t = players[targetId];
-    if (!p || !t) return;
+    if (!p || !t || t.space !== p.space) return;
     const flowerId = FLOWER_IDS.find(f => p.inventory[f] > 0);
     if (!flowerId) { socket.emit('flowerDenied', { reason: 'none' }); return; }
     if (Math.hypot(p.x - t.x, p.z - t.z) > 3.5) { socket.emit('flowerDenied', { reason: 'range' }); return; }
@@ -809,7 +845,7 @@ io.on('connection', (socket) => {
   // --- Proposals: propose to a nearby player, they accept or reject ---
   socket.on('sendProposal', ({ targetId }) => {
     const p = players[socket.id], t = players[targetId];
-    if (!p || !t) return;
+    if (!p || !t || t.space !== p.space) return;
     if (Math.hypot(p.x - t.x, p.z - t.z) > 3.5) { socket.emit('proposalDenied', { reason: 'range' }); return; }
     io.to(targetId).emit('proposalReceived', { from: p.name, fromId: socket.id });
   });
@@ -911,19 +947,19 @@ io.on('connection', (socket) => {
     const now = Date.now();
     if (p.lastEmote && now - p.lastEmote < 1500) return;
     p.lastEmote = now;
-    io.emit('emote', { id: socket.id, type });
+    io.to(spaceRoom(p)).emit('emote', { id: socket.id, type });
   });
 
   // --- Kisses: a short, consensual animation. Needs to be close, has a cooldown, and anyone can opt out. ---
   socket.on('kiss', ({ targetId } = {}) => {
     const p = players[socket.id], t = players[targetId];
-    if (!p || !t || targetId === socket.id) return;
+    if (!p || !t || targetId === socket.id || t.space !== p.space) return;
     const now = Date.now();
     if (p.lastKiss && now - p.lastKiss < 4000) { socket.emit('kissDenied', { reason: 'cooldown' }); return; }
     if (Math.hypot(p.x - t.x, p.z - t.z) > 3.6) { socket.emit('kissDenied', { reason: 'range' }); return; }
     if (t.noKiss) { socket.emit('kissDenied', { reason: 'blocked' }); return; }
     p.lastKiss = now; p.kissesGiven = (p.kissesGiven || 0) + 1;
-    io.emit('kissFx', { fromId: socket.id, toId: targetId });
+    io.to(spaceRoom(p)).emit('kissFx', { fromId: socket.id, toId: targetId });
     io.to(targetId).emit('kissReceived', { from: p.name, fromId: socket.id });
   });
   socket.on('setNoKiss', (v) => { const p = players[socket.id]; if (p) p.noKiss = !!v; });
@@ -935,7 +971,7 @@ io.on('connection', (socket) => {
     const now = Date.now();
     if (p.lastChat && now - p.lastChat < 600) return;                          // light flood control
     p.lastChat = now;
-    io.emit('chatMessage', { id: socket.id, name: p.name, text: String(text).slice(0, 200) });
+    io.to(spaceRoom(p)).emit('chatMessage', { id: socket.id, name: p.name, text: String(text).slice(0, 200) });   // chat stays inside the player's space
   });
 
   socket.on('voice-offer', ({ target, offer }) => io.to(target).emit('voice-offer', { from: socket.id, offer }));
@@ -955,8 +991,9 @@ io.on('connection', (socket) => {
       io.emit('deliveryUpdated', deliveryJob);
     }
     for (const r of Object.keys(roles)) if (roles[r] === socket.id) roles[r] = null;
-    delete players[socket.id];
-    io.emit('playerLeft', socket.id);
+    const leftRoom = spaceRoom(p);
+    delete players[socket.id]; delete publicPositions[socket.id];
+    io.to(leftRoom).emit('playerLeft', socket.id);
     io.emit('roleState', roleStatePayload());
   });
 });
