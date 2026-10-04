@@ -377,6 +377,35 @@
   #sit-prompt{ display:none; position:absolute; left:50%; bottom:190px; transform:translateX(-50%); z-index:6; background:rgba(20,15,10,.85); color:#fff; padding:10px 20px; border:none; border-radius:20px; font-weight:700; font-size:.85em; cursor:pointer; }
   #forced-mute-note{ display:none; position:absolute; top:10px; left:50%; transform:translateX(-50%); z-index:30; background:#c0392b; color:#fff;
     font-weight:800; padding:8px 16px; border-radius:20px; font-size:.82em; }
+
+  /* ===== Register + Verification popups (same look as the login popup) ===== */
+  .auth-modal{ position:absolute; inset:0; z-index:40; display:none; align-items:center; justify-content:center; padding:16px;
+    background:rgba(5,2,10,.78); backdrop-filter:blur(3px); -webkit-backdrop-filter:blur(3px); overflow-y:auto; }
+  .auth-modal.open{ display:flex; }
+  .auth-card{ position:relative; background:#fff; color:#333; width:min(100%,420px); border-radius:18px; padding:24px 24px 20px;
+    box-shadow:0 20px 60px rgba(254,1,154,.35); font-family:'Poppins','Space Grotesk',sans-serif; margin:auto; }
+  .auth-card .ac-close{ position:absolute; top:10px; right:12px; width:36px; height:36px; border:none; background:none; font-size:1.1em; color:#999; cursor:pointer; border-radius:50%; }
+  .auth-card .ac-close:hover{ background:#f5f5f5; }
+  .ac-head{ display:flex; align-items:center; justify-content:center; gap:8px; margin-bottom:4px; }
+  .ac-head img{ width:40px; height:40px; object-fit:contain; }
+  .ac-head h2{ margin:0; color:#FE019A; font-size:1.35em; font-weight:700; }
+  .ac-why{ text-align:center; font-size:.86em; color:#666; margin:2px 0 14px; line-height:1.4; }
+  .ac-error{ display:none; background:#ffebeb; color:#cc0000; border:1px solid #ffcccc; padding:10px 12px; border-radius:10px; font-size:.85em; text-align:center; margin-bottom:10px; }
+  .ac-ok{ display:none; background:#e6ffe6; color:#0a7a2f; border:1px solid #ccffcc; padding:10px 12px; border-radius:10px; font-size:.85em; text-align:center; margin-bottom:10px; }
+  .auth-card input[type=text], .auth-card input[type=email], .auth-card input[type=password], .auth-card input[type=date], .auth-card select{
+    width:100%; padding:12px 14px; border:1px solid #FFD9EF; border-radius:12px; font-size:16px; color:#333; background:#fff; font-family:inherit; outline:none; margin:4px 0; box-sizing:border-box; }
+  .auth-card input:focus, .auth-card select:focus{ border-color:#FE019A; box-shadow:0 0 0 3px rgba(254,1,154,.18); }
+  .ac-row{ display:flex; gap:8px; } .ac-row > *{ flex:1; min-width:0; }
+  .ac-lbl{ font-size:.78em; color:#666; margin:8px 2px 0; font-weight:600; }
+  .ac-fb{ font-size:.78em; min-height:1.1em; margin:0 2px 4px; } .ac-fb.good{ color:#059669; } .ac-fb.bad{ color:#dc2626; } .ac-fb.neu{ color:#777; }
+  .ac-btn{ width:100%; margin-top:14px; padding:14px; min-height:48px; border:none; border-radius:12px; background:#FE019A; color:#fff; font-weight:700; font-size:16px; cursor:pointer; font-family:inherit; }
+  .ac-btn:hover{ background:#D90085; } .ac-btn:disabled{ opacity:.6; cursor:wait; }
+  .ac-btn.ghost{ background:#fff; color:#FE019A; border:2px solid #FE019A; margin-top:8px; } .ac-btn.ghost:disabled{ cursor:not-allowed; }
+  .ac-terms{ display:flex; align-items:flex-start; gap:8px; margin:12px 2px 0; font-size:.78em; color:#555; line-height:1.4; }
+  .ac-terms input{ width:18px; height:18px; margin-top:2px; accent-color:#FE019A; flex-shrink:0; }
+  .ac-terms a{ color:#FE019A; font-weight:600; text-decoration:none; }
+  #vf-code{ text-align:center; font-size:28px !important; letter-spacing:.45em; font-weight:700; padding:14px 8px !important; }
+  .ac-mail{ text-align:center; font-size:2.2em; margin-bottom:2px; }
 </style>
 </head>
 <body>
@@ -598,6 +627,57 @@
   </div>
 </div>
 
+<!-- REGISTER popup: replaces the login popup when "Create an account" is clicked -->
+<div id="reg-modal" class="auth-modal" role="dialog" aria-modal="true" aria-labelledby="reg-title">
+  <div class="auth-card">
+    <button class="ac-close" type="button" id="reg-close" aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
+    <div class="ac-head"><img src="https://neyyappam.com/assets/logos/neyyappamicon.png" alt="" onerror="this.style.display='none'"><h2 id="reg-title">Join Neyyappam</h2></div>
+    <p class="ac-why">Create your account here — it works on neyyappam.com too.</p>
+    <div class="ac-error" id="reg-error" role="alert"></div>
+    <form id="reg-form" autocomplete="on">
+      <div class="ac-row">
+        <input type="text" name="first_name" placeholder="First Name" maxlength="30" required autocomplete="given-name">
+        <input type="text" name="last_name" placeholder="Last Name" maxlength="30" required autocomplete="family-name">
+      </div>
+      <input type="text" name="username" id="rg-username" placeholder="Username (a-z, 0-9, _, .)" maxlength="30" required autocomplete="username" autocapitalize="off">
+      <div class="ac-fb neu" id="rg-user-fb"></div>
+      <div class="ac-lbl">Date of birth</div>
+      <input type="date" name="dob" id="rg-dob" required>
+      <select name="gender" required>
+        <option value="" disabled selected hidden>Select Gender</option>
+        <option value="male">Male</option><option value="female">Female</option><option value="other">Other</option>
+      </select>
+      <input type="text" name="location" placeholder="Location" maxlength="30" required autocomplete="address-level2">
+      <input type="email" name="email" placeholder="Email Address" required autocomplete="email" autocapitalize="off">
+      <div class="lg-pw"><input type="password" name="password" id="rg-pass" placeholder="Password (min 8 characters)" minlength="8" required autocomplete="new-password"><button type="button" id="rg-eye" aria-label="Show password" style="position:absolute;right:4px;top:50%;transform:translateY(-50%);width:42px;height:42px;border:none;background:none;font-size:1.15em;cursor:pointer;">👁️</button></div>
+      <input type="password" name="confirm_password" id="rg-pass2" placeholder="Confirm Password" minlength="8" required autocomplete="new-password">
+      <div class="ac-fb neu" id="rg-pass-fb"></div>
+      <label class="ac-terms"><input type="checkbox" name="agree_terms" required>
+        <span>By clicking Register, you agree to our <a id="rg-terms" href="#" target="_blank" rel="noopener">Terms</a>, <a id="rg-privacy" href="#" target="_blank" rel="noopener">Privacy Policy</a> and <a id="rg-cookies" href="#" target="_blank" rel="noopener">Cookies Policy</a>. You may receive email notifications from us.</span></label>
+      <button type="submit" class="ac-btn" id="rg-submit">Register</button>
+    </form>
+    <div class="lg-links">Already have an account? <a href="#" id="rg-to-login">Log in</a></div>
+  </div>
+</div>
+
+<!-- VERIFICATION popup: shown after register (or when an unverified member tries to log in) -->
+<div id="ver-modal" class="auth-modal" role="dialog" aria-modal="true" aria-labelledby="ver-title">
+  <div class="auth-card">
+    <button class="ac-close" type="button" id="ver-close" aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
+    <div class="ac-mail">✉️</div>
+    <div class="ac-head"><h2 id="ver-title">Verify your email</h2></div>
+    <p class="ac-why" id="vf-note">Enter the 6-digit code we emailed you.</p>
+    <div class="ac-error" id="vf-error" role="alert"></div>
+    <div class="ac-ok" id="vf-ok" role="status"></div>
+    <form id="vf-form" autocomplete="off">
+      <input type="text" id="vf-code" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="••••••" autocomplete="one-time-code" required>
+      <button type="submit" class="ac-btn" id="vf-submit">Verify &amp; enter the city</button>
+    </form>
+    <button type="button" class="ac-btn ghost" id="vf-resend">Resend code</button>
+    <div class="lg-links">The code is valid for 30 minutes. Check your spam folder too.<br><a href="#" id="vf-to-login">Back to login</a></div>
+  </div>
+</div>
+
 
 <div id="private-bar">
   <span id="priv-title">🔒 Private</span>
@@ -782,6 +862,138 @@ function requireLogin(feature, after) {
 }
 document.getElementById('login-close').onclick = closeLogin;
 document.getElementById('lg-guest').onclick = closeLogin;
+
+/* ---- Register + Verification popups: one popup visible at a time (login -> register -> verify), all inside the city ---- */
+const regModal = document.getElementById('reg-modal'), verModal = document.getElementById('ver-modal');
+let verEmail = '', resendTimer = null;
+function showAuthModal(which) {
+  loginModal.classList.toggle('open', which === 'login');
+  regModal.classList.toggle('open', which === 'reg');
+  verModal.classList.toggle('open', which === 'ver');
+}
+function closeAuthModals() { showAuthModal(null); pendingAfterLogin = null; clearInterval(resendTimer); }
+function acMsg(id, text) { const el = document.getElementById(id); el.textContent = text || ''; el.style.display = text ? 'block' : 'none'; }
+function backToLogin() {
+  const after = pendingAfterLogin; clearInterval(resendTimer);
+  showAuthModal(null); openLogin(null, after);
+}
+function openRegister() {
+  document.getElementById('rg-terms').href = SITE_URL + '/terms.php';
+  document.getElementById('rg-privacy').href = SITE_URL + '/privacy.php';
+  document.getElementById('rg-cookies').href = SITE_URL + '/cookies.php';
+  const dob = document.getElementById('rg-dob'), d = new Date(); d.setFullYear(d.getFullYear() - 13); dob.max = d.toISOString().slice(0, 10);
+  acMsg('reg-error', '');
+  showAuthModal('reg');
+}
+function openVerify(email, note, cooldown) {
+  verEmail = email;
+  document.getElementById('vf-note').textContent = note || ('We sent a 6-digit code to ' + email + '. Enter it below.');
+  document.getElementById('vf-code').value = '';
+  acMsg('vf-error', ''); acMsg('vf-ok', '');
+  showAuthModal('ver');
+  startResendTimer(cooldown === undefined ? 60 : cooldown);
+  setTimeout(() => document.getElementById('vf-code').focus(), 80);
+}
+function startResendTimer(sec) {
+  clearInterval(resendTimer);
+  const b = document.getElementById('vf-resend'); let left = Math.max(0, Math.ceil(sec));
+  const paint = () => { b.disabled = left > 0; b.textContent = left > 0 ? 'Resend code in ' + left + 's' : 'Resend code'; };
+  paint();
+  if (left > 0) resendTimer = setInterval(() => { left--; paint(); if (left <= 0) clearInterval(resendTimer); }, 1000);
+}
+document.getElementById('lg-register').onclick = (e) => { e.preventDefault(); openRegister(); };     // hides login, shows register
+document.getElementById('rg-to-login').onclick = (e) => { e.preventDefault(); backToLogin(); };
+document.getElementById('vf-to-login').onclick = (e) => { e.preventDefault(); backToLogin(); };
+document.getElementById('reg-close').onclick = closeAuthModals;
+document.getElementById('ver-close').onclick = closeAuthModals;
+[regModal, verModal].forEach(m => m.addEventListener('mousedown', e => { if (e.target === m) closeAuthModals(); }));
+addEventListener('keydown', e => { if (e.key === 'Escape' && (regModal.classList.contains('open') || verModal.classList.contains('open'))) closeAuthModals(); });
+document.getElementById('rg-eye').onclick = function () {
+  const a = document.getElementById('rg-pass'), b = document.getElementById('rg-pass2'), show = a.type === 'password';
+  a.type = b.type = show ? 'text' : 'password'; this.textContent = show ? '🕶️' : '👁️';
+};
+
+// live username check (same rules as register.php)
+let userChkT = null;
+document.getElementById('rg-username').addEventListener('input', (e) => {
+  clearTimeout(userChkT);
+  const fb = document.getElementById('rg-user-fb'), u = e.target.value.trim();
+  const set = (t, c) => { fb.textContent = t; fb.className = 'ac-fb ' + c; };
+  if (!u) { set('', 'neu'); return; }
+  if (!/^[a-zA-Z0-9_.]+$/.test(u) || u.length > 30) { set('Only letters, numbers, underscores and dots (max 30).', 'bad'); return; }
+  set('Checking availability…', 'neu');
+  userChkT = setTimeout(async () => {
+    try {
+      const r = await fetch(AUTH_URL + '?action=username_check&username=' + encodeURIComponent(u), { credentials: 'include', cache: 'no-store' });
+      const d = await r.json();
+      if (document.getElementById('rg-username').value.trim() !== u) return;      // typed something newer meanwhile
+      set(d.available ? '✓ This username is available!' : '✗ ' + d.message, d.available ? 'good' : 'bad');
+    } catch (x) { set('Could not check right now.', 'bad'); }
+  }, 350);
+});
+// password rules feedback
+function regPassFb() {
+  const p = document.getElementById('rg-pass').value, c = document.getElementById('rg-pass2').value, fb = document.getElementById('rg-pass-fb');
+  const set = (t, k) => { fb.textContent = t; fb.className = 'ac-fb ' + k; };
+  if (!p && !c) set('', 'neu');
+  else if (p.length < 8) set('Password must be at least 8 characters.', 'bad');
+  else if (!c) set('Please confirm your password.', 'neu');
+  else if (p === c) set('✓ Passwords match.', 'good');
+  else set('✗ Passwords do not match.', 'bad');
+}
+document.getElementById('rg-pass').addEventListener('input', regPassFb);
+document.getElementById('rg-pass2').addEventListener('input', regPassFb);
+
+// submit register -> verification popup
+document.getElementById('reg-form').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const f = ev.target, btn = document.getElementById('rg-submit');
+  if (f.elements.password.value !== f.elements.confirm_password.value) { acMsg('reg-error', 'Passwords do not match.'); return; }
+  acMsg('reg-error', ''); btn.disabled = true; btn.textContent = 'Creating your account…';
+  const body = {};
+  ['first_name', 'last_name', 'username', 'dob', 'gender', 'location', 'email', 'password', 'confirm_password'].forEach(n => body[n] = f.elements[n].value);
+  body.agree_terms = f.elements.agree_terms.checked ? '1' : '';
+  try {
+    const d = await authCall('register', body);
+    if (!d.ok) acMsg('reg-error', d.error || 'Could not register');
+    else {
+      f.elements.password.value = ''; f.elements.confirm_password.value = '';
+      openVerify(d.email, d.mail_error ? d.mail_error : ('We sent a 6-digit code to ' + d.email + '. Enter it below.'), d.mail_error ? 0 : 60);
+    }
+  } catch (e) { acMsg('reg-error', e.message || 'Could not reach the server'); }
+  btn.disabled = false; btn.textContent = 'Register';
+});
+
+// submit the code -> logged in, popup closes, player stays in the city
+document.getElementById('vf-code').addEventListener('input', (e) => { e.target.value = e.target.value.replace(/\D/g, '').slice(0, 6); });
+document.getElementById('vf-form').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const btn = document.getElementById('vf-submit'), code = document.getElementById('vf-code').value;
+  if (code.length !== 6) { acMsg('vf-error', 'Enter all 6 digits.'); return; }
+  acMsg('vf-error', ''); acMsg('vf-ok', ''); btn.disabled = true; btn.textContent = 'Verifying…';
+  try {
+    const d = await authCall('verify', { email: verEmail, code });
+    if (d.ok && d.logged_in) {
+      const after = pendingAfterLogin;
+      applyAuth(d); closeAuthModals();
+      showToast('✅ Email verified — welcome, ' + auth.display + '!');
+      if (typeof socket !== 'undefined' && socket.connected && inGame()) { socket.emit('auth', { token: auth.token }); afterLoginInGame(); }
+      if (after) after();
+    } else if (d.already_verified) { backToLogin(); showToast('This email is already verified — please log in'); }
+    else acMsg('vf-error', d.error || 'Verification failed');
+  } catch (e) { acMsg('vf-error', e.message || 'Could not reach the server'); }
+  btn.disabled = false; btn.textContent = 'Verify & enter the city';
+});
+document.getElementById('vf-resend').onclick = async () => {
+  acMsg('vf-error', ''); acMsg('vf-ok', '');
+  const b = document.getElementById('vf-resend'); b.disabled = true; b.textContent = 'Sending…';
+  try {
+    const d = await authCall('resend', { email: verEmail });
+    if (d.ok) { acMsg('vf-ok', 'A new code is on its way to ' + verEmail + '.'); startResendTimer(d.wait || 60); }
+    else if (d.already_verified) { backToLogin(); showToast('This email is already verified — please log in'); }
+    else { acMsg('vf-error', d.error || 'Could not resend'); startResendTimer(d.wait || 0); }
+  } catch (e) { acMsg('vf-error', e.message || 'Could not reach the server'); startResendTimer(0); }
+};
 loginModal.addEventListener('mousedown', e => { if (e.target === loginModal) closeLogin(); });
 addEventListener('keydown', e => { if (e.key === 'Escape' && loginModal.classList.contains('open')) closeLogin(); });
 document.getElementById('lg-eye').onclick = function () {
@@ -795,6 +1007,10 @@ document.getElementById('login-form').addEventListener('submit', async (ev) => {
   try {
     const d = await authCall('login', { email: document.getElementById('lg-email').value.trim(), password: document.getElementById('lg-pass').value, remember: document.getElementById('lg-remember').checked ? '1' : '0' });
     if (!d.ok || !d.logged_in) {
+      if (d.needs_verify) {                        // account exists but the email is not verified yet: open the verification popup
+        openVerify(document.getElementById('lg-email').value.trim(), 'Please verify your email first. Enter the code we sent you, or tap Resend.', 0);
+        btn.disabled = false; btn.textContent = 'Login'; return;
+      }
       err.innerHTML = '';
       err.textContent = d.error || 'Login failed';
       if (d.verify_url) { const a = document.createElement('a'); a.href = SITE_URL + '/' + d.verify_url; a.target = '_blank'; a.textContent = ' Verify now'; a.style.color = '#FE019A'; err.appendChild(a); }
