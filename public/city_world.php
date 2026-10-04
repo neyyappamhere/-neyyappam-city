@@ -365,8 +365,6 @@
   #private-bar.open{ display:flex; }
   #private-bar button{ border:none; border-radius:16px; padding:8px 12px; min-height:36px; font-weight:800; cursor:pointer; font-family:inherit; font-size:.95em; background:rgba(255,255,255,.2); color:#fff; }
   #private-bar button.leave{ background:#fff; color:#d90085; }
-  #priv-mod{ display:none; width:34px; height:34px; align-items:center; justify-content:center; background:rgba(0,0,0,.4); color:#ffd166; border-radius:50%; font-size:.95em; cursor:pointer; animation:modPulse 2.4s infinite; }
-  @keyframes modPulse{ 0%,100%{ box-shadow:0 0 0 0 rgba(255,209,102,.55); } 50%{ box-shadow:0 0 0 6px rgba(255,209,102,0); } }
   @media (max-width:700px){ #private-btn{ top:294px; left:auto; right:14px; } #private-bar{ top:104px; } }
 
   /* ===== Fun & social: slap / hold hands / sit (consent prompts reuse the kiss-prompt look) ===== */
@@ -685,7 +683,6 @@
   <button type="button" id="priv-info"><i class="fa-solid fa-share-nodes"></i> Invite</button>
   <button type="button" id="priv-mute"><i class="fa-solid fa-microphone"></i> Mute</button>
   <button type="button" class="leave" id="priv-leave"><i class="fa-solid fa-phone-slash"></i> Leave</button>
-  <span id="priv-mod" role="img" title="A moderator is in this room" aria-label="A moderator is in this room"><i class="fa-solid fa-binoculars"></i></span>
 </div>
 
 <div id="private-overlay">
@@ -722,7 +719,7 @@
       <button type="button" class="priv-main" id="pj-join" disabled>Join room</button>
     </div>
 
-    <p class="priv-note">You and your people move into your own private copy of the place — nobody else can see you, hear you or walk in. For safety and legal reasons moderators can enter a private room — you will always see a notice when one does. Voice is never recorded.</p>
+    <p class="priv-note">You and your people move into your own private copy of the place — nobody else can see you, hear you or walk in. Voice is never recorded.</p>
   </div>
 </div>
 
@@ -732,11 +729,6 @@
 <script>
 /* =========================================================
    0) OPTIONAL LOGGED-IN HANDOFF FROM PHP
-   city.php can embed this as:
-     <iframe src="https://city.neyyappam.com?name=X&uid=123&balloons=450">
-   If uid is present, this session is tied to a real account and
-   balloons collected here get persisted server-side (see server.js).
-   If uid is absent, it's a guest — fully playable, nothing persists.
    ========================================================= */
 const params = new URLSearchParams(location.search);
 const handoffName = params.get('name');
@@ -744,11 +736,7 @@ const handoffBalloons = 0;   // balances now come only from the signed login tok
 
 /* =========================================================
    0b) AUTH — site login shared with login.php (same PHP session + "keep me signed in" cookie).
-   * AUTH_URL / SITE_URL can be overridden: ?auth=https://neyyappam.com/ajax/city_auth.php&site=https://neyyappam.com
-   * city_token is a short-lived signed token; server.js trusts ONLY this, never a uid from the browser.
    ========================================================= */
-// This page is plain HTML, so '/ajax/city_auth.php' only works if the game is served from the PHP site itself.
-// Anywhere else (Node host, subdomain, localhost) we call the live PHP site by its full address.
 const ON_PHP_SITE = /^(www\.)?neyyappam\.(com|net|in)$/.test(location.hostname);
 const AUTH_URL = params.get('auth') || window.CITY_AUTH_URL || (ON_PHP_SITE ? '/ajax/city_auth.php' : 'https://neyyappam.com/ajax/city_auth.php');
 const SITE_URL = (params.get('site') || window.CITY_SITE_URL || (AUTH_URL.startsWith('http') ? new URL(AUTH_URL).origin : location.origin)).replace(/\/$/, '');
@@ -798,7 +786,6 @@ async function refreshAuth() {
   try { applyAuth(await authCall('status')); } catch (e) { if (!auth.checked) { auth.checked = true; paintAuthUi(); routeGate(); } }
   return auth.loggedIn;
 }
-// Token is valid for 2h; refresh it well before it runs out, and whenever the tab comes back to the foreground.
 async function keepTokenFresh() {
   if (!auth.loggedIn) return;
   if (auth.expires - Date.now() < 20 * 60 * 1000) {
@@ -1866,10 +1853,7 @@ let milkmaid = null, chayaNpc = null;
   ms.position.set(MILK_POS.x, y0 + 2.35, -3.93); scene.add(ms);
 })();
 
-/* ---- Sound engine (WebAudio). Silent until the Sound button is on.
-   REAL RECORDINGS: if you drop files like cow.mp3, goat.mp3, hen.mp3, rooster.mp3, ox.mp3, crow.mp3, koel.mp3,
-   kiss.mp3, laugh.mp3, aiyyo.mp3, bell.mp3 into your site's /sounds/ folder they are used automatically.
-   Anything missing falls back to the built-in synthesised voice. ---- */
+/* ---- Sound engine (WebAudio). Silent until the Sound button is on. ---- */
 let soundOn = false, actx = null, master = null, glottal = null, noiseBuf = null;
 const SAMPLES = {}, SAMPLE_NAMES = ['cow', 'ox', 'goat', 'hen', 'rooster', 'crow', 'koel', 'kiss', 'laugh', 'aiyyo', 'bell'];
 async function loadSamples() {
@@ -1906,7 +1890,7 @@ function envGain(t0, attack, hold, release, peak) {
   g.gain.exponentialRampToValueAtTime(0.0001, t0 + attack + hold + release);
   return g;
 }
-function glottalWave() {            // harmonic-rich "vocal fold" source instead of a plain sawtooth
+function glottalWave() {
   if (!glottal) { const n = 40, re = new Float32Array(n), im = new Float32Array(n); for (let k = 1; k < n; k++) im[k] = 1 / Math.pow(k, 1.25); glottal = actx.createPeriodicWave(re, im); }
   return glottal;
 }
@@ -1914,8 +1898,6 @@ function noiseBuffer() {
   if (!noiseBuf) { noiseBuf = actx.createBuffer(1, actx.sampleRate, actx.sampleRate); const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; }
   return noiseBuf;
 }
-// One vocal sound: pitch glide through f[], harmonic source, breath noise, formant filters [centre, Q, gain, sweepTo?],
-// optional vibrato [Hz, depth] and tremolo "am" [Hz, depth] (the trembling "meeeh" of a goat).
 function vox({ type = 'glottal', f = [200, 200], dur = 1, vol = 0.3, formants = [[500, 5]], vib = [0, 0], am = null, noise = 0, at = 0.06, t0 = 0 }) {
   if (!actx || !soundOn || vol < 0.003) return;
   const t = actx.currentTime + t0, o = actx.createOscillator();
@@ -1944,7 +1926,7 @@ function vox({ type = 'glottal', f = [200, 200], dur = 1, vol = 0.3, formants = 
 const S = (name, v, rate) => playSample(name, v * 1.2, rate);
 const SND = {
   moo(v, p = 1)  { if (S('cow', v, p)) return; vox({ f: [98*p, 128*p, 150*p, 118*p, 78*p], dur: 2.0, vol: 0.65*v, formants: [[280, 5, 1, 520], [700, 7, 0.7, 950], [2400, 12, 0.12]], vib: [4.5, 3], noise: 0.07, at: 0.18 }); },
-  ox(v)          { if (S('ox', v)) return; SND.moo(v, 0.72); },                     // the kaalas: deeper than a cow
+  ox(v)          { if (S('ox', v)) return; SND.moo(v, 0.72); },
   goat(v)        { if (S('goat', v)) return; vox({ f: [380, 430, 470, 410], dur: 1.0, vol: 0.5*v, formants: [[900, 5], [1700, 8, 0.8], [2600, 10, 0.3]], vib: [28, 35], am: [28, 0.55], noise: 0.12, at: 0.03 }); },
   hen(v)         { if (S('hen', v)) return;
                    for (let i = 0; i < 3; i++) vox({ f: [520, 380], dur: 0.1, vol: 0.3*v, formants: [[850, 4], [1700, 5, 0.6]], noise: 0.2, at: 0.008, t0: i*0.17 + Math.random()*0.02 });
@@ -1970,8 +1952,7 @@ function listenerPos() { return (drivingCarId && cars[drivingCarId]) ? cars[driv
 function earVol(x, z, range = 24) { const q = listenerPos(), d = Math.hypot(q.x - x, q.z - z); return Math.pow(Math.max(0, 1 - d / range), 1.5); }
 function oxCall(c) { const p = c.group.position, v = earVol(p.x, p.z, 34); if (v > 0.01) { SND.ox(v); setTimeout(() => SND.ox(v * 0.8), 450); } }
 
-/* ---- Animals: pashu (cow), aadu (goat), kozhi (hen/rooster). Positions are a pure function of the clock,
-   so every player sees them in the same place without any network traffic. ---- */
+/* ---- Animals: pashu (cow), aadu (goat), kozhi (hen/rooster). ---- */
 const animals = [];
 const part = (g) => (geo, mat, x, y, z) => { const o = new THREE.Mesh(geo, mat); o.position.set(x, y, z); g.add(o); return o; };
 const cowLeg = new THREE.CylinderGeometry(0.08, 0.06, 0.6, 6); cowLeg.translate(0, -0.3, 0);
@@ -2034,7 +2015,6 @@ function addAnimal(g, hx, hz, ax, az, w) {
   g.position.set(hx, 0.26, hz); scene.add(g);
   animals.push({ g, seed, hx, hz, ax, az, w, p1: seed*1.7, p2: seed*2.9, p3: seed*0.7, p4: seed*4.1, kind: g.userData.kind, lastIdx: null });
 }
-// pashu — cows around the cowshed; aadu — goats; kozhi — hens in the yard + cowshed block, one rooster
 addAnimal(makeCow(0xf3ebdd, 0x8a5a3a), -10, -8.4, 2.4, 1.2, 0.07);
 addAnimal(makeCow(0x8a5a3a, 0xf3ebdd), -11, -8.0, 2.2, 1.1, 0.06);
 addAnimal(makeGoat(0xf3ebdd), -12, -5.6, 1.8, 1.0, 0.12);
@@ -2045,7 +2025,6 @@ addAnimal(makeGoat(0x8a5a3a), 62.8, -14, 0.9, 5.0, 0.12);
 [0xc0392b, 0xf0e6d0, 0x8a5a3a, 0x2b2b2b].forEach((c, i) => addAnimal(makeHen(c, 0x3a2a1a, false), -10 + i - 1.5, 6, 3.2, 1.4, 0.2 + i*0.02));
 [0xe6d8c0, 0xb5651d, 0x333333].forEach((c, i) => addAnimal(makeHen(c, 0x3a2a1a, false), -9 + i*2, -6.2, 3.5, 1.4, 0.21 + i*0.02));
 addAnimal(makeHen(0xa8451d, 0x1f6b3a, true), -13, -6, 1.5, 1.2, 0.2);       // rooster
-// river house yard: hens, a goat and a cow
 [0xc0392b, 0xf0e6d0, 0x2b2b2b].forEach((c, i) => addAnimal(makeHen(c, 0x3a2a1a, false), 94.5 + i*0.7, -30 + i, 2.2, 2.4, 0.19 + i*0.02));
 addAnimal(makeGoat(0xf3ebdd), 93, -26, 1.6, 1.3, 0.12);
 addAnimal(makeCow(0xf3ebdd, 0x8a5a3a), 94, -35, 2.0, 1.2, 0.06);
@@ -2062,7 +2041,7 @@ function animalsTick() {
     let px = p.x, pz = p.z;
     if (inG) {
       const mp = myAvatar.position, ddx = mp.x - p.x, ddz = mp.z - p.z, dd = Math.hypot(ddx, ddz);
-      if (a.kind === 'hen' || a.kind === 'rooster') {            // hens run away from you (funny, local-only)
+      if (a.kind === 'hen' || a.kind === 'rooster') {
         const want = dd < 2.4 && !drivingCarId ? (2.4 - dd) * 1.1 : 0;
         a.fx = (a.fx || 0) + ((-ddx / (dd || 1)) * want - (a.fx || 0)) * 0.12;
         a.fz = (a.fz || 0) + ((-ddz / (dd || 1)) * want - (a.fz || 0)) * 0.12;
@@ -2077,7 +2056,7 @@ function animalsTick() {
     if (sp > 0.03) a.g.rotation.y = Math.atan2(-vz, vx);
     const amp = Math.min(0.5, sp * 1.6), ph = now * (3 + sp * 5);
     a.g.userData.legs.forEach((l, i) => { l.rotation.z = Math.sin(ph + (i % 2 ? Math.PI : 0)) * amp; });
-    if (a.g.userData.up) a.g.userData.up.rotation.z = -Math.max(0, Math.sin(now * 3 + a.seed)) * 0.55 * (sp < 0.5 ? 1 : 0.3);   // pecking
+    if (a.g.userData.up) a.g.userData.up.rotation.z = -Math.max(0, Math.sin(now * 3 + a.seed)) * 0.55 * (sp < 0.5 ? 1 : 0.3);
     const cfg = ANIMAL_SND[a.kind], idx = Math.floor((now + a.seed * 3.7) / cfg[0]);
     if (a.lastIdx === null) a.lastIdx = idx;
     else if (idx !== a.lastIdx) {
@@ -2087,8 +2066,7 @@ function animalsTick() {
   });
 }
 
-/* ---- Shared old radio: the server relays one live stream per station, so everyone hears the same broadcast,
-   louder the closer they are to the chayakkada, and only while Sound is on. ---- */
+/* ---- Shared old radio ---- */
 let radioState = { on: true, station: 0, stations: [] };
 const radioAudio = new Audio(); radioAudio.preload = 'none';
 let radioLoaded = -1, radioStatus = 'idle', radioRetryAt = 0, radioErrs = [], radioPlaying = false;
@@ -2146,8 +2124,8 @@ function kissFx(fromId, toId) {
   const a = avatarOf(fromId), b = avatarOf(toId); if (!a || !b) return;
   showEmote(fromId, 'kiss'); showEmote(toId, 'blush');
   const yaw = Math.atan2(b.position.x - a.position.x, b.position.z - a.position.z);
-  a.rotation.y = yaw; b.rotation.y = yaw + Math.PI;        // both face each other, not just the one who kissed
-  if (fromId === socket.id || toId === socket.id) kissFreeze = performance.now() + 900;   // a brief, real pause for the moment
+  a.rotation.y = yaw; b.rotation.y = yaw + Math.PI;
+  if (fromId === socket.id || toId === socket.id) kissFreeze = performance.now() + 900;
   const now = performance.now();
   for (let i = 0; i < 6; i++) { const sp = emojiSprite('❤️', 0.55); sp.visible = false; scene.add(sp); heartFx.push({ sp, a, b, t0: now + i * 170, dur: 1300, j: (Math.random() - 0.5) * 0.6 }); }
   const mid = earVol((a.position.x + b.position.x) / 2, (a.position.z + b.position.z) / 2, 30);
@@ -2176,7 +2154,6 @@ addEventListener('keydown', e => {
   else if (k === 'v') { document.body.classList.toggle('novintage'); showToast(document.body.classList.contains('novintage') ? '🎞️ 80s film look off' : '🎞️ 80s film look on'); }
 });
 
-// Goat headbutt: get too close to an aadu and it sends you flying — everyone sees you shout "aiyyo!"
 function headbutt(a, ddx, ddz, dd) {
   goatCool = Date.now() + 9000; const l = dd || 1;
   knock = { vx: ddx / l * 0.3, vz: ddz / l * 0.3, n: 16 };
@@ -2209,7 +2186,7 @@ function toggleSit() {
   const b = nearestBench(); if (!b) return;
   sitting = true; mySitPos = b;
   myAvatar.position.x = b.x; myAvatar.position.z = b.z; myAvatar.position.y = -0.35;
-  myAvatar.rotation.y = Math.atan2(-b.x, -b.z);         // face away from the bench, like sitting down on it
+  myAvatar.rotation.y = Math.atan2(-b.x, -b.z);
   socket.emit('sitState', { sitting: true, x: b.x, y: 0, z: b.z, rotY: myAvatar.rotation.y });
 }
 document.getElementById('sit-prompt').onclick = toggleSit;
@@ -2264,7 +2241,6 @@ function socialTick() {
   document.getElementById('sit-prompt').style.display = nearBench ? 'block' : 'none';
   document.getElementById('emote-bar').style.display = gate ? 'none' : 'flex';
 }
-// Role picker (name gate)
 document.querySelectorAll('.role-pill').forEach(b => b.onclick = () => {
   if (b.disabled) return;
   document.querySelectorAll('.role-pill').forEach(x => x.classList.remove('selected')); b.classList.add('selected');
@@ -2273,13 +2249,11 @@ document.querySelectorAll('.role-pill').forEach(b => b.onclick = () => {
 
 function keralaTick(t) {
   const nowMs = Date.now(), nowS = nowMs / 1000;
-  // samavar steam
   teaFx.steam.forEach(s => {
     const p = (t*0.25 + s.phase) % 1;
     s.sp.position.set(Math.sin(p*6 + s.phase*5)*0.12, 1.7 + p*1.6, 0);
     s.sp.scale.setScalar(0.35 + p*0.7); s.sp.material.opacity = (1 - p) * 0.55;
   });
-  // bullock carts: oxen walk, wheels turn, bell rings and the kaalas moo while moving
   Object.values(cars).forEach(c => {
     if (!c.isCart) return;
     const p = c.group.position, sp = typeof c.lx === 'number' ? Math.hypot(p.x - c.lx, p.z - c.lz) : 0;
@@ -2297,10 +2271,8 @@ function keralaTick(t) {
   });
   animalsTick(); funTick(performance.now()); socialTick();
   if (milkmaid) { milkmaid.rotation.z = Math.sin(t*1.2)*0.03; milkmaid.rotation.x = Math.sin(t*3)*0.03; }
-  // radio dial + note
   teaFx.dial.emissiveIntensity = radioState.on ? 0.7 + 0.25*Math.sin(t*5) : 0;
   teaFx.note.visible = radioState.on; teaFx.note.position.y = 1.0 + Math.sin(t*2.5)*0.08;
-  // radio audio
   const gate = document.getElementById('name-gate').style.display !== 'none';
   const d = radioDistance(), sts = radioState.stations || [];
   const idx = sts.length ? radioState.station % sts.length : -1;
@@ -2333,7 +2305,7 @@ function keralaTick(t) {
   document.getElementById('cart-call').style.display = (!gate && drivingCarId && cars[drivingCarId] && cars[drivingCarId].isCart) ? 'block' : 'none';
 }
 
-// Floating balloon pickups — matches the site's real currency, not generic cash
+// Floating balloon pickups
 function makeBalloonSprite() {
   const canvas = document.createElement('canvas');
   canvas.width = 128; canvas.height = 128;
@@ -2356,8 +2328,7 @@ balloonSpots.forEach(spot => {
   balloonMeshes[spot.id] = s;
 });
 
-// --- Treasure chests: scattered around the city, positions come straight
-// from the server so every player sees the same ones in the same spots. ---
+// --- Treasure chests ---
 function makeChestSprite() {
   const canvas = document.createElement('canvas');
   canvas.width = 128; canvas.height = 128;
@@ -2386,10 +2357,7 @@ function rebuildChests(spots) {
   });
 }
 
-// --- Delivery job markers: a package crate at the pickup, a flag at the dropoff.
-// Positions come straight from the server (job.pickup / job.dropoff), so every
-// player sees them in the exact same spot — unlike the balloons above, which
-// are cosmetic and randomized per-client. ---
+// --- Delivery job markers ---
 function makeCrateMesh() {
   const group = new THREE.Group();
   const crate = new THREE.Mesh(new THREE.BoxGeometry(0.8,0.8,0.8), new THREE.MeshStandardMaterial({ color: 0xc9a565 }));
@@ -2415,14 +2383,14 @@ dropoffMarker.visible = false;
 scene.add(pickupMarker, dropoffMarker);
 let currentJob = null;
 
-// --- Waypoint: set from the map, shown as a pulsing beacon you can walk toward ---
+// --- Waypoint ---
 const waypointBeacon = new THREE.Mesh(
   new THREE.ConeGeometry(0.4, 1.2, 6),
   new THREE.MeshStandardMaterial({ color: 0xFFD700, emissive: 0xFFD700, emissiveIntensity: 0.6, transparent: true, opacity: 0.9 })
 );
 waypointBeacon.visible = false;
 scene.add(waypointBeacon);
-let myWaypoint = null; // {x, z} or null
+let myWaypoint = null;
 
 /* =========================================================
    2) AVATARS — distinct male / female / other silhouettes, not just color
@@ -2451,7 +2419,6 @@ function makeAvatarMesh(gender, outfitColor, hairStyle, role) {
   const sh = isF ? 0.18 : 0.215, hipX = isF ? 0.095 : 0.09, hipY = 0.9, shY = 1.45, headY = 1.67;
   body.scale.setScalar(isF ? (mature ? 0.935 : 0.94) : 1);
 
-  // ---- torso: a lathe profile gives real chest / waist / hip shape ----
   const prof = isF
     ? (mature ? [[0.001,0.84],[0.158,0.86],[0.195,0.94],[0.165,1.02],[0.122,1.12],[0.14,1.22],[0.158,1.30],[0.145,1.38],[0.12,1.45],[0.05,1.49],[0.001,1.5]]
               : [[0.001,0.84],[0.15,0.86],[0.18,0.94],[0.15,1.02],[0.115,1.12],[0.13,1.22],[0.148,1.30],[0.14,1.38],[0.12,1.45],[0.05,1.49],[0.001,1.5]])
@@ -2460,9 +2427,8 @@ function makeAvatarMesh(gender, outfitColor, hairStyle, role) {
   const torso = add(body, G('torso' + isF + mature, () => new THREE.LatheGeometry(prof.map(p => new THREE.Vector2(p[0], p[1])), 22)), torsoMat, 0, 0, 0);
   torso.scale.z = 0.7;
   [-1, 1].forEach(s => add(body, sph(0.058, 10, 8), torsoMat, s * sh, shY - 0.035, 0));
-  add(body, cyl(0.048, 0.054, 0.11, 12), skin, 0, 1.535, 0);                        // neck
+  add(body, cyl(0.048, 0.054, 0.11, 12), skin, 0, 1.535, 0);
 
-  // ---- head: skull, jaw, ears, eyes (white + iris + highlight), brows, nose, lips ----
   const head = new THREE.Group(); head.position.set(0, headY, 0); body.add(head);
   add(head, sph(0.105, 22, 16), skin, 0, 0, 0).scale.set(0.9, 1.1, 0.97);
   add(head, sph(0.07, 14, 10), skin, 0, -0.065, 0.025).scale.set(0.95, 0.85, 0.9);
@@ -2475,17 +2441,16 @@ function makeAvatarMesh(gender, outfitColor, hairStyle, role) {
     add(head, new THREE.BoxGeometry(0.034, 0.0065, 0.008), hairMat, s * 0.04, 0.047, 0.0835).rotation.z = -s * 0.12;
     if (isF) add(head, new THREE.BoxGeometry(0.03, 0.003, 0.006), M(0x0d0806), s * 0.04, 0.034, 0.09);
   });
-  add(head, sph(0.016, 8, 8), skin, 0, -0.012, 0.098).scale.set(0.9, 1.1, 1.2);       // nose
+  add(head, sph(0.016, 8, 8), skin, 0, -0.012, 0.098).scale.set(0.9, 1.1, 1.2);
   const lipMat = M(role === 'karavakkari' ? 0xa8323f : isF ? 0xc9686a : 0xb87a68, { roughness: 0.4 });
   add(head, sph(0.0165, 8, 6), lipMat, 0, -0.049, 0.089).scale.set(1.4, 0.42, 0.55);
   add(head, sph(0.0165, 8, 6), lipMat, 0, -0.058, 0.088).scale.set(1.3, 0.45, 0.55);
-  if (role === 'chayakkaran') [-1, 0, 1].forEach(s => add(head, sph(0.017, 8, 6), hairMat, s * 0.016, -0.038, 0.095).scale.set(1.7, 0.55, 0.8));   // moustache
+  if (role === 'chayakkaran') [-1, 0, 1].forEach(s => add(head, sph(0.017, 8, 6), hairMat, s * 0.016, -0.038, 0.095).scale.set(1.7, 0.55, 0.8));
 
-  // ---- hair ----
   const cap = add(head, new THREE.SphereGeometry(0.113, 22, 16, 0, Math.PI * 2, 0, Math.PI * 0.42), hairMat, 0, 0.012, -0.004);
   cap.scale.set(0.94, 1.12, 1.0); cap.rotation.x = -0.32;
   add(head, sph(0.1, 14, 10), hairMat, 0, mature || style === 'pony' ? -0.02 : 0.0, -0.035).scale.set(0.9, mature ? 1.0 : 0.8, 0.9);
-  if (mature) {                                                       // long braid with jasmine, pottu, jhumkas
+  if (mature) {
     for (let i = 0; i < 9; i++) {
       add(body, sph(0.03 - i * 0.0012, 8, 6), hairMat, 0, 1.6 - i * 0.075, -0.115 - i * 0.012).scale.set(1.1, 1.0, 0.9);
       add(body, sph(0.011, 6, 6), M(0xffffff), i % 2 ? 0.026 : -0.026, 1.6 - i * 0.075, -0.13 - i * 0.012);
@@ -2501,7 +2466,6 @@ function makeAvatarMesh(gender, outfitColor, hairStyle, role) {
     const b = add(head, new THREE.TorusGeometry(0.108, 0.012, 8, 22), M(0xffd700), 0, 0.06, 0); b.rotation.x = Math.PI / 2; b.scale.set(0.94, 1, 1.0);
   }
 
-  // ---- arms (pivot at the shoulder so they can swing) ----
   const arms = [], sleeveMat = torsoMat;
   [-1, 1].forEach(s => {
     const pv = new THREE.Group(); pv.position.set(s * sh, shY - 0.03, 0); pv.rotation.z = s * 0.07; body.add(pv);
@@ -2510,13 +2474,12 @@ function makeAvatarMesh(gender, outfitColor, hairStyle, role) {
     const fa = new THREE.Group(); fa.position.set(0, -0.29, 0); fa.rotation.x = -0.22; pv.add(fa);
     add(fa, cyl(0.033, 0.024, 0.26, 10), skin, 0, -0.13, 0);
     add(fa, sph(0.03, 10, 8), skin, 0, -0.275, 0).scale.set(0.95, 1.3, 0.55);
-    add(fa, cyl(0.008, 0.007, 0.05, 5), skin, -s * 0.026, -0.27, 0.014).rotation.z = s * 0.6;        // thumb
+    add(fa, cyl(0.008, 0.007, 0.05, 5), skin, -s * 0.026, -0.27, 0.014).rotation.z = s * 0.6;
     add(pv, cyl(0.05, 0.046, 0.17, 10), sleeveMat, 0, -0.085, 0);
     if (mature) [0, 1].forEach(k => { add(fa, new THREE.TorusGeometry(0.03, 0.006, 6, 12), gold, 0, -0.232 - k * 0.018, 0).rotation.x = Math.PI / 2; });
     arms.push(pv);
   });
 
-  // ---- legs (hip + knee + shoe) ----
   const legs = [], legMat = (isF || role === 'chayakkaran') ? skin : M(0x2e2e38);
   const footMat = role === 'chayakkaran' ? M(0x6b4a2a) : shoeMatShared;
   [-1, 1].forEach(s => {
@@ -2529,8 +2492,7 @@ function makeAvatarMesh(gender, outfitColor, hairStyle, role) {
     legs.push(pv);
   });
 
-  // ---- lower garments & costume details ----
-  if (role === 'chayakkaran') {                                      // mundu with kasavu border, thorthu on the shoulder
+  if (role === 'chayakkaran') {
     add(body, cyl(0.19, 0.27, 0.62, 18), M(0xf6f3ea), 0, 0.64, 0);
     add(body, new THREE.TorusGeometry(0.27, 0.014, 6, 24), gold, 0, 0.345, 0).rotation.x = Math.PI / 2;
     add(body, new THREE.TorusGeometry(0.195, 0.02, 6, 20), M(0xe3ddcc), 0, 0.93, 0).rotation.x = Math.PI / 2;
@@ -2538,7 +2500,7 @@ function makeAvatarMesh(gender, outfitColor, hairStyle, role) {
     g.fillStyle = '#ffffff'; g.fillRect(0, 0, 32, 32); g.fillStyle = '#c0392b'; for (let i = 0; i < 32; i += 8) { g.fillRect(i, 0, 4, 32); g.fillRect(0, i, 32, 4); }
     const tx = new THREE.CanvasTexture(cv); tx.wrapS = tx.wrapT = THREE.RepeatWrapping; tx.repeat.set(2, 6);
     const tw = add(body, new THREE.BoxGeometry(0.1, 0.5, 0.035), new THREE.MeshStandardMaterial({ map: tx, roughness: 0.9 }), -sh + 0.01, 1.27, 0.12); tw.rotation.z = 0.12;
-  } else if (role === 'karavakkari') {                               // pavada, davani
+  } else if (role === 'karavakkari') {
     add(body, cyl(0.2, 0.42, 0.86, 22), M(0x1e7a4a, { roughness: 0.65 }), 0, 0.5, 0);
     add(body, new THREE.TorusGeometry(0.42, 0.022, 6, 28), gold, 0, 0.1, 0).rotation.x = Math.PI / 2;
     add(body, new THREE.TorusGeometry(0.33, 0.012, 6, 28), gold, 0, 0.28, 0).rotation.x = Math.PI / 2;
@@ -2552,7 +2514,6 @@ function makeAvatarMesh(gender, outfitColor, hairStyle, role) {
   return group;
 }
 
-// Walk cycle, idle breathing and emotes. Works for me, other players and the stand-in characters.
 function tickAvatar(g, now) {
   const u = g && g.userData; if (!u || !u.legs) return;
   const p = g.position, sp = u.lx === undefined ? 0 : Math.hypot(p.x - u.lx, p.z - u.lz);
@@ -2607,14 +2568,13 @@ let myHairStyle = 'short';
   keeper.position.set(10, 0.25, 12.7);
   keeper.add(makeLabel('Shopkeeper'));
   scene.add(keeper);
-  chayaNpc = makeAvatarMesh('male', '#ffffff', 'short', 'chayakkaran');            // stand-in until a real player takes the role
+  chayaNpc = makeAvatarMesh('male', '#ffffff', 'short', 'chayakkaran');
   chayaNpc.position.set(-10, 0.27, 10.8); chayaNpc.rotation.y = Math.PI;
   chayaNpc.add(makeLabel('Chayakkaran 🤖')); scene.add(chayaNpc);
   milkmaid = makeAvatarMesh('female', '#a61e24', 'short', 'karavakkari');
   milkmaid.position.set(-6, 0.27, -5.5); milkmaid.add(makeLabel('Karavakkari 🤖')); milkProps(milkmaid); scene.add(milkmaid);
 }
 
-// Milk pail + stool beside Karavakkari chechi
 function milkProps(g) {
   const steel = kMat(0xc9ced6, { metalness: 0.6, roughness: 0.3 });
   const add = (geo, m, x, y, z) => { const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); g.add(o); return o; };
@@ -2662,7 +2622,7 @@ if (handoffName && !auth.loggedIn) document.getElementById('name-input').value =
    4) MOVEMENT
    ========================================================= */
 const keys = {};
-const KEYALIAS = { arrowup: 'w', arrowdown: 's', arrowleft: 'a', arrowright: 'd' };   // arrow keys now work like WASD
+const KEYALIAS = { arrowup: 'w', arrowdown: 's', arrowleft: 'a', arrowright: 'd' };
 addEventListener('keydown', e => { const k = e.key.toLowerCase(); keys[KEYALIAS[k] || k] = true; if (KEYALIAS[k] && !/INPUT|TEXTAREA/.test((e.target.tagName || ''))) e.preventDefault(); });
 addEventListener('keyup', e => { const k = e.key.toLowerCase(); keys[KEYALIAS[k] || k] = false; });
 
@@ -2672,7 +2632,7 @@ function moveDrag(x,y){
   if(!dragging) return;
   camYaw -= (x-lastX)*0.006;
   camPitch += (y-lastY)*0.004;
-  camPitch = Math.max(-0.85, Math.min(1.0, camPitch)); // clamp so you can't flip past straight up/down
+  camPitch = Math.max(-0.85, Math.min(1.0, camPitch));
   lastX = x; lastY = y;
 }
 function endDrag(){ dragging = false; }
@@ -2700,11 +2660,10 @@ joyZone.addEventListener('touchmove', e => {
 joyZone.addEventListener('touchend', () => { joyActive=false; joyVec={x:0,y:0}; joyStick.style.transform='translate(0,0)'; });
 
 const speed = 0.14;
-let drivingCarId = null;   // id of the car I'm currently driving, or null if on foot
-let carSpeed = 0;          // current forward/backward speed while driving
+let drivingCarId = null;
+let carSpeed = 0;
 const vehiclePrompt = document.getElementById('vehicle-prompt');
 
-// --- Stats panel counters ---
 const stats = { distanceTraveled: 0, deliveriesCompleted: 0, carsDriven: 0 };
 
 function findNearbyCar() {
@@ -2712,7 +2671,7 @@ function findNearbyCar() {
   for (const id in cars) {
     const c = cars[id];
     const d = Math.hypot(c.group.position.x - myAvatar.position.x, c.group.position.z - myAvatar.position.z);
-    const reach = c.isPlane ? 4 : c.isCart ? 3.4 : 2.2; // planes and carts are bigger
+    const reach = c.isPlane ? 4 : c.isCart ? 3.4 : 2.2;
     if (d < reach && d < nearestDist) { nearest = c; nearestDist = d; }
   }
   return nearest;
@@ -2726,7 +2685,7 @@ addEventListener('keydown', (e) => {
 vehiclePrompt.addEventListener('click', triggerVehicleAction);
 
 function triggerVehicleAction() {
-  if (document.getElementById('name-gate').style.display !== 'none') return; // not in the world yet
+  if (document.getElementById('name-gate').style.display !== 'none') return;
   if (drivingCarId) {
     exitVehicle();
   } else {
@@ -2763,7 +2722,6 @@ function exitVehicle() {
   document.getElementById('fly-btns').style.display = 'none';
   setChip(null);
   const forward = { x: Math.cos(c.group.rotation.y), z: -Math.sin(c.group.rotation.y) };
-  // Step out to the left side of the car rather than through it
   myAvatar.position.set(
     c.group.position.x - forward.z * off,
     0,
@@ -2790,7 +2748,7 @@ function updateDriving() {
   if (keys['d']) steer -= 1;
   throttle += -joyVec.y; steer += -joyVec.x;
 
-  const cart = !!c.isCart;   // kaalavandi: slow and steady
+  const cart = !!c.isCart;
   const accel = cart ? 0.006 : 0.012, maxSpeed = cart ? 0.13 : 0.32, friction = 0.985, turnRate = cart ? 0.03 : 0.045;
   carSpeed += throttle * accel;
   carSpeed *= friction;
@@ -2803,9 +2761,8 @@ function updateDriving() {
   c.group.position.x += forward.x * carSpeed;
   c.group.position.z += forward.z * carSpeed;
   stats.distanceTraveled += Math.abs(carSpeed);
-  if (c.group.position.x > RIVER.x1 - 2.5) { c.group.position.x = RIVER.x1 - 2.5; carSpeed = 0; } // cars stop at the riverbank
+  if (c.group.position.x > RIVER.x1 - 2.5) { c.group.position.x = RIVER.x1 - 2.5; carSpeed = 0; }
 
-  // Chase camera behind the car — now with vertical pitch for a full 360° view
   const camDist = 7;
   camera.position.x = c.group.position.x - forward.x * camDist * Math.cos(camPitch);
   camera.position.z = c.group.position.z - forward.z * camDist * Math.cos(camPitch);
@@ -2848,10 +2805,10 @@ function updateFlying(c) {
   if (up && canLift) planeVy += 0.006;
   else if (down) planeVy -= 0.006;
   else planeVy *= 0.96;
-  if (!canLift && airborne) planeVy -= 0.01;          // too slow: stall and sink
+  if (!canLift && airborne) planeVy -= 0.01;
   planeVy = Math.max(-0.25, Math.min(0.25, planeVy));
   p.y += planeVy;
-  if (p.y <= 0) { p.y = 0; planeVy = 0; if (!throttle) planeSpeed *= 0.97; }   // wheels down, rolling friction
+  if (p.y <= 0) { p.y = 0; planeVy = 0; if (!throttle) planeSpeed *= 0.97; }
   if (p.y > 110) { p.y = 110; planeVy = Math.min(planeVy, 0); }
 
   if (planeSpeed > 0.02) c.group.rotation.y += steer * 0.028 * (airborne ? 1 : 0.6);
@@ -2887,10 +2844,9 @@ function updateMovement() {
   if (dx || dz) {
     const len = Math.hypot(dx,dz) || 1;
     dx/=len; dz/=len;
-    // Camera looks along (sin yaw, cos yaw); screen-right is (-cos yaw, sin yaw). (The old formula had both axes mirrored.)
     const moveX = -dx*Math.cos(camYaw) - dz*Math.sin(camYaw);
     const moveZ =  dx*Math.sin(camYaw) - dz*Math.cos(camYaw);
-    const sp = swimming ? speed * 0.55 : speed;   // swimming is slower
+    const sp = swimming ? speed * 0.55 : speed;
     myAvatar.position.x += moveX*sp;
     myAvatar.position.z += moveZ*sp;
     myAvatar.rotation.y = Math.atan2(moveX, moveZ);
@@ -2900,8 +2856,7 @@ function updateMovement() {
     checkTreasureProximity();
   }
   if (privScene) clampPrivate();
-  if (performance.now() < kissFreeze) { renderer.render(scene, camera); return; }   // hold still for the kiss
-  // Sink into the water while swimming, with a gentle bob
+  if (performance.now() < kissFreeze) { renderer.render(scene, camera); return; }
   const targetY = swimming ? -0.65 + Math.sin(performance.now()/350) * 0.06 : (onBridge(myAvatar.position.x, myAvatar.position.z) ? BRIDGE.y : 0);
   myAvatar.position.y += (targetY - myAvatar.position.y) * 0.25;
   setChip(swimming ? '🏊 Swimming' : null);
@@ -2911,7 +2866,6 @@ function updateMovement() {
   camera.position.y = myAvatar.position.y + 1.2 + camDist*Math.sin(camPitch);
   camera.lookAt(myAvatar.position.x, myAvatar.position.y+1, myAvatar.position.z);
 
-  // Show/hide the "Press E to enter" prompt based on proximity to a free car
   const nearby = findNearbyCar();
   if (nearby && !nearby.occupiedBy) {
     vehiclePrompt.textContent = nearby.isPlane ? 'Press E to fly ✈️' : nearby.isCart ? 'Press E to ride the kaalavandi 🐂' : 'Press E to enter';
@@ -2922,7 +2876,7 @@ function updateMovement() {
   shopPrompt.textContent = here ? SHOPS[here].prompt : '';
   shopPrompt.style.display = here ? 'block' : 'none';
   if (document.getElementById('shop-overlay').style.display !== 'none' && shopMode !== here) {
-    document.getElementById('shop-overlay').style.display = 'none'; // walked away from the counter
+    document.getElementById('shop-overlay').style.display = 'none';
   }
 }
 
@@ -2972,7 +2926,7 @@ function updateWaypointReadout() {
   const readout = document.getElementById('waypoint-readout');
   if (!myWaypoint) { readout.style.display = 'none'; return; }
   const d = Math.hypot(myWaypoint.x - myAvatar.position.x, myWaypoint.z - myAvatar.position.z);
-  if (d < 2) { // arrived — clear it
+  if (d < 2) {
     myWaypoint = null;
     waypointBeacon.visible = false;
     readout.style.display = 'none';
@@ -3037,7 +2991,6 @@ socket.on('balloonCollected', ({ pickupId, by, balloons }) => {
   if (by === socket.id) { balloonEl.textContent = balloons; refreshAffordability(); }
 });
 
-// --- Vehicles ---
 socket.on('currentCars', (occupied) => {
   Object.keys(occupied).forEach(carId => { if (cars[carId]) cars[carId].occupiedBy = occupied[carId]; });
 });
@@ -3048,7 +3001,7 @@ socket.on('carEntered', ({ carId, driverId }) => {
   if (driverId === socket.id) {
     enterVehicle(carId);
   } else if (others[driverId]) {
-    others[driverId].group.visible = false; // hide their walking avatar while they drive
+    others[driverId].group.visible = false;
   }
 });
 socket.on('carMoved', ({ carId, x, y, z, rotY }) => {
@@ -3071,11 +3024,10 @@ socket.on('carFreed', ({ carId }) => {
   const c = cars[carId];
   if (!c) return;
   c.occupiedBy = null;
-  if (c.isPlane) { c.group.position.y = 0; c.group.rotation.z = 0; c.target = null; } // pilot left mid-air: park it
+  if (c.isPlane) { c.group.position.y = 0; c.group.rotation.z = 0; c.target = null; }
 });
-socket.on('carDenied', () => { /* someone else got there first — no action needed */ });
+socket.on('carDenied', () => { });
 
-// --- Shared chayakkada radio + cart calls ---
 socket.on('radioState', (s) => {
   radioState = { on: !!s.on, station: s.station | 0, stations: Array.isArray(s.stations) ? s.stations : [] };
   const n = radioState.stations[radioState.station];
@@ -3083,7 +3035,6 @@ socket.on('radioState', (s) => {
 });
 socket.on('cartCall', ({ carId }) => { const c = cars[carId]; if (c && c.isCart) oxCall(c); });
 
-// --- emotes, kisses, roles ---
 socket.on('emote', ({ id, type }) => showEmote(id, type));
 socket.on('kissFx', ({ fromId, toId }) => kissFx(fromId, toId));
 socket.on('kissReceived', ({ from, fromId }) => {
@@ -3140,7 +3091,6 @@ socket.on('commission', ({ amount, balloons, from, itemId }) => {
   showToast(`💰 ${from} bought ${itemLabel(itemId)} — you earned +${amount} 🎈`);
 });
 
-// --- Delivery job updates ---
 const jobBanner = document.getElementById('job-banner');
 socket.on('deliveryUpdated', (job) => {
   currentJob = job;
@@ -3164,7 +3114,6 @@ socket.on('deliveryUpdated', (job) => {
   }
 });
 
-// --- Treasure hunt ---
 socket.on('treasureSpots', (spots) => { rebuildChests(spots); });
 socket.on('treasureOpened', ({ chestId }) => { const m = chestMeshes[chestId]; if (m) m.visible = false; });
 socket.on('treasureReward', ({ reward, balloons }) => {
@@ -3175,7 +3124,6 @@ socket.on('treasureReward', ({ reward, balloons }) => {
   else showToast(`Chest opened! Found a ${reward.name} ✨`);
 });
 
-// --- Shop / money economy ---
 let shopCatalog = [];
 let myInventory = {};
 const CATEGORY_LABELS = {
@@ -3319,7 +3267,6 @@ socket.on('playerRenamed', ({ id, name, username }) => {
   o.label = makeLabel(name + (o.role === 'chayakkaran' ? ' 🍵' : o.role === 'karavakkari' ? ' 🥛' : ''), username ? '@' + username : null);
   o.group.add(o.label);
 });
-// Someone changed their look in settings: rebuild their avatar where they are standing
 socket.on('playerLook', ({ id, gender, outfitColor, hairStyle }) => {
   const o = others[id]; if (!o) return;
   const keep = Object.assign({}, o.target, { id, name: o.name, username: o.username, role: o.role, gender, outfitColor, hairStyle });
@@ -3333,9 +3280,7 @@ socket.on('connect', () => { if (inGame() && auth.loggedIn) socket.emit('auth', 
 function escapeHtml(s){ return s.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
 
 /* =========================================================
-   7) VOICE — via LiveKit (audio is relayed through LiveKit's own
-   servers rather than connecting players' devices directly to each
-   other, which is what made voice fail on some mobile carrier networks)
+   7) VOICE — via LiveKit
    ========================================================= */
 let lkRoom = null, micOn = false, voiceChain = Promise.resolve();
 const micBtn = document.getElementById('mic-btn'), soundBtn = document.getElementById('sound-btn');
@@ -3354,7 +3299,7 @@ async function connectVoice() {
   if (!auth.loggedIn) throw new Error('log in first');
   const getTok = () => fetch(`/livekit-token?identity=${encodeURIComponent(socket.id)}`, { headers: { Authorization: 'Bearer ' + auth.token } });
   let res = await getTok();
-  if (res.status === 401) { await refreshAuth(); if (auth.loggedIn) res = await getTok(); }   // token may have just expired
+  if (res.status === 401) { await refreshAuth(); if (auth.loggedIn) res = await getTok(); }
   let data; try { data = await res.json(); } catch (e) { throw new Error('the voice service is not reachable on this server'); }
   if (res.status === 401) { const e = new Error('please log in again'); e.needLogin = true; throw e; }
   if (!res.ok || !data.token) throw new Error(data.error || 'no voice token');
@@ -3370,10 +3315,9 @@ async function connectVoice() {
   lkRoom = room;
   try { await room.startAudio(); } catch (e) {}
 }
-// Mic and Sound are independent: you can listen to others with your mic off. The voice room is joined only when either is on.
 function syncVoice() {
   voiceChain = voiceChain.then(async () => {
-    const want = (micOn || soundOn) && auth.loggedIn && !privRoom;   // members-only; paused while you are in a private room
+    const want = (micOn || soundOn) && auth.loggedIn && !privRoom;
     try {
       if (want && !lkRoom) await connectVoice();
       if (!want && lkRoom) { const r = lkRoom; lkRoom = null; await r.disconnect(); document.querySelectorAll('audio.lk-voice-audio').forEach(el => el.remove()); }
@@ -3388,7 +3332,7 @@ function syncVoice() {
 }
 micBtn.onclick = () => {
   const toggle = () => { micOn = !micOn; paintVoiceBtns(); syncVoice(); };
-  if (!micOn && !auth.loggedIn) { requireLogin('mic', () => { micOn = true; paintVoiceBtns(); syncVoice(); }); return; }   // turning ON needs a login
+  if (!micOn && !auth.loggedIn) { requireLogin('mic', () => { micOn = true; paintVoiceBtns(); syncVoice(); }); return; }
   toggle();
 };
 soundBtn.onclick = () => {
@@ -3402,7 +3346,7 @@ paintVoiceBtns();
 /* =========================================================
    8) MAP + STATS + SHOP + INVENTORY PANELS
    ========================================================= */
-const WORLD_HALF = (GRID*BLOCK)/2 + 20; // matches the ground size built earlier
+const WORLD_HALF = (GRID*BLOCK)/2 + 20;
 let mapOpen = false;
 const mapCanvas = document.getElementById('map-canvas');
 const mapCtx = mapCanvas.getContext('2d');
@@ -3502,7 +3446,7 @@ mapCanvas.addEventListener('click', (e) => {
    ========================================================= */
 let PRIV_PLACES = [{ id: 'happycup', name: 'Happy Cup', emoji: '☕' }, { id: 'sarovaram', name: 'Sarovaram Park', emoji: '🌳' }, { id: 'beach', name: 'Beach', emoji: '🏖️' }, { id: 'hugamug', name: 'Hug a Mug', emoji: '🫶' }];
 let PRIV_MAX = 5;
-let privRoom = null, lkPriv = null, privConnecting = false, privMuted = false, privPlace = null, privSize = 2, privMods = new Set(), privMine = null, privFound = null;
+let privRoom = null, lkPriv = null, privConnecting = false, privMuted = false, privPlace = null, privSize = 2, privMine = null, privFound = null;
 const privOverlay = document.getElementById('private-overlay');
 const $p = (id) => document.getElementById(id);
 const linkRoom = (params.get('room') || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
@@ -3532,7 +3476,7 @@ function renderPrivSize() {
 }
 function openPrivate(view, roomId) {
   if (!inGame()) { showToast('Enter the city first'); return; }
-  if (!auth.loggedIn) { requireLogin('private', () => openPrivate(view, roomId)); return; }   // popup first; re-opens after a successful login
+  if (!auth.loggedIn) { requireLogin('private', () => openPrivate(view, roomId)); return; }
   if (drivingCarId) { showToast('🚗 Get out of your vehicle first'); return; }
   socket.emit('privateConfig', (cfg) => { if (cfg && cfg.places) { PRIV_PLACES = cfg.places; PRIV_MAX = cfg.max || 5; renderPrivPlaces(); renderPrivSize(); } });
   renderPrivPlaces(); renderPrivSize();
@@ -3548,7 +3492,6 @@ privOverlay.addEventListener('mousedown', e => { if (e.target === privOverlay) p
 $p('ptab-create').onclick = () => { if (privRoom && privMine) showReady(privMine); else if (!privRoom) privTab('create'); };
 $p('ptab-join').onclick = () => { if (privRoom) { showToast('Leave your current room to join another'); return; } privTab('join'); };
 
-// ---- create ----
 $p('priv-start').onclick = () => {
   const btn = $p('priv-start'); btn.disabled = true;
   socket.emit('privateCreate', { place: privPlace, capacity: privSize }, (r) => {
@@ -3574,7 +3517,6 @@ $p('pr-copy-invite').onclick = async () => {
 $p('pr-copy-link').onclick = () => { if (privMine) copyText(roomLink(privMine.roomId), '🔗 Link copied (they still need the passcode)'); };
 $p('priv-info').onclick = () => { if (privMine) { showReady(privMine); privOverlay.classList.add('open'); } else showToast('Room ID: ' + (privRoom ? privRoom.id : '—')); };
 
-// ---- join (search by ID, then passcode) ----
 function findRoom() {
   const id = $p('pj-id').value.toUpperCase().replace(/[^A-Z0-9]/g, '');
   if (id.length < 4) { $p('pj-found').textContent = 'Enter the Room ID'; return; }
@@ -3598,16 +3540,13 @@ $p('pj-join').onclick = () => {
     else { $p('pj-found').textContent = '❌ ' + ((r && r.error) || 'Could not join'); btn.disabled = false; $p('pj-pass').select(); }
   });
 };
-// opened from a shared link (?room=ID): once you are in the city, jump to the Join screen
 if (linkRoom) { const t = setInterval(() => { if (inGame()) { clearInterval(t); openPrivate('join', linkRoom); } }, 600); }
 
-// ---- inside a room ----
 function paintPrivBar() {
   const bar = $p('private-bar');
   if (!privRoom) { bar.classList.remove('open'); return; }
   const names = privRoom.members.map(m => m.name).join(', ');
   $p('priv-title').textContent = '🔒 ' + privRoom.emoji + ' ' + privRoom.placeName + ' · ' + privRoom.id + ' · ' + (privRoom.members.length < 2 ? 'waiting for others…' : names);
-  $p('priv-mod').style.display = privMods.size ? 'flex' : 'none';   // small binoculars icon while a moderator is in the room
   $p('priv-info').style.display = privMine ? '' : 'none';
   $p('priv-mute').innerHTML = privMuted ? '<i class="fa-solid fa-microphone-slash"></i> Unmute' : '<i class="fa-solid fa-microphone"></i> Mute';
   bar.classList.add('open');
@@ -3616,8 +3555,8 @@ socket.on('privateRoomState', (room) => {
   const first = !privRoom;
   privRoom = room;
   if (first) {
-    if (micOn) { micOn = false; paintVoiceBtns(); }       // the private room has its own mic; public mic goes off
-    syncVoice();                                           // leaves the public voice room
+    if (micOn) { micOn = false; paintVoiceBtns(); }
+    syncVoice();
     connectPrivate();
   }
   paintPrivBar();
@@ -3634,12 +3573,8 @@ async function connectPrivate() {
       if (track.kind === 'audio') { const el = track.attach(); el.classList.add('lk-priv-audio'); el.style.display = 'none'; document.body.appendChild(el); }
     });
     room.on(LivekitClient.RoomEvent.TrackUnsubscribed, (track) => { track.detach().forEach(el => el.remove()); });
-    const isMod = (p) => String(p.identity || '').startsWith('mod-');
-    room.on(LivekitClient.RoomEvent.ParticipantConnected, (p) => { if (isMod(p)) { privMods.add(p.identity); paintPrivBar(); } });
-    room.on(LivekitClient.RoomEvent.ParticipantDisconnected, (p) => { if (isMod(p)) { privMods.delete(p.identity); paintPrivBar(); } });
     await room.connect(r.url, r.token);
     lkPriv = room;
-    room.remoteParticipants.forEach(p => { if (isMod(p)) privMods.add(p.identity); });
     try { await room.startAudio(); } catch (e) {}
     try { await room.localParticipant.setMicrophoneEnabled(!privMuted); } catch (e) { showToast('🎤 Allow the microphone to talk in the private room'); }
     paintPrivBar();
@@ -3648,18 +3583,17 @@ async function connectPrivate() {
   } finally { privConnecting = false; }
 }
 function cleanupPrivate() {
-  const r = lkPriv; lkPriv = null; privRoom = null; privMine = null; privMods.clear(); privMuted = false;
+  const r = lkPriv; lkPriv = null; privRoom = null; privMine = null; privMuted = false;
   if (r) { try { r.disconnect(); } catch (e) {} }
   document.querySelectorAll('audio.lk-priv-audio').forEach(el => el.remove());
   privOverlay.classList.remove('open');
   paintPrivBar();
-  syncVoice();                                             // public voice resumes if sound/mic were on
+  syncVoice();
 }
 socket.on('privateRoomClosed', ({ reason }) => {
-  const msg = { ended: 'The private room ended', expired: 'The private room closed after being empty too long', closed_by_admin: 'A moderator closed this private room', logout: 'You were logged out' }[reason] || 'The private room closed';
+  const msg = { ended: 'The private room ended', expired: 'The private room closed after being empty too long', logout: 'You were logged out' }[reason] || 'The private room closed';
   cleanupPrivate(); showToast('🔒 ' + msg);
 });
-$p('priv-mod').onclick = () => showToast('🔭 A moderator is in this room for safety');
 $p('priv-leave').onclick =() => { socket.emit('privateLeave'); cleanupPrivate(); showToast('You left the private room'); };
 $p('priv-mute').onclick = async () => {
   privMuted = !privMuted;
@@ -3670,12 +3604,10 @@ $p('priv-mute').onclick = async () => {
 
 /* =========================================================
    8b) PRIVATE AREAS — each private room is its own themed place, far away from the city.
-   The server only shows you the people in YOUR room, so nobody else can see or enter it.
-   To add a new area: add it to PRIVATE_PLACES in server.js (it gets a simple park until you add a builder here).
    ========================================================= */
-const PRIVATE_ORIGIN = { x: 5000, z: 5000 };   // must match server.js
+const PRIVATE_ORIGIN = { x: 5000, z: 5000 };
 let privScene = null;
-function srnd(i) { const x = Math.sin(i * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); }   // same "random" for everyone
+function srnd(i) { const x = Math.sin(i * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); }
 function pm(color, o) { return new THREE.MeshStandardMaterial(Object.assign({ color, roughness: 0.9 }, o || {})); }
 function pbox(g, w, h, d, color, x, y, z, o) { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), pm(color, o)); m.position.set(x, y, z); g.add(m); return m; }
 function pcyl(g, rt, rb, h, color, x, y, z, seg, o) { const m = new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, seg || 12), pm(color, o)); m.position.set(x, y, z); g.add(m); return m; }
@@ -3759,7 +3691,7 @@ function buildHugAMug(g) {
   plight(g, 0xffb3d1, 1.1, 30, 0, 4.6, 0); plight(g, 0xffd9b0, 0.8, 24, 0, 4.6, -10);
   return { radius: 12, bg: 0x3b2230, fog: [0x3b2230, 34, 80] };
 }
-function buildGenericArea(g, info) {   // used for any area you add on the server before a custom builder exists
+function buildGenericArea(g, info) {
   pdisc(g, 70, 0x6fbf4a, -0.02);
   for (let i = 0; i < 12; i++) { const a = i / 12 * Math.PI * 2, r = 26 + srnd(i) * 5; ptree(g, Math.cos(a) * r, Math.sin(a) * r, 1 + srnd(i + 20) * 0.4); }
   pbench(g, 6, 5); pbench(g, -6, 5); plamp(g, 0, -8);
@@ -3798,7 +3730,6 @@ function clampPrivate() {
   const dx = myAvatar.position.x - PRIVATE_ORIGIN.x, dz = myAvatar.position.z - PRIVATE_ORIGIN.z, d = Math.hypot(dx, dz);
   if (d > privScene.radius) { myAvatar.position.x = PRIVATE_ORIGIN.x + dx / d * privScene.radius; myAvatar.position.z = PRIVATE_ORIGIN.z + dz / d * privScene.radius; }
 }
-// The server moves us into / out of a room's area and then sends ONLY the people who are in that same area.
 socket.on('spaceChanged', ({ place, spawn }) => {
   Object.keys(others).forEach(id => { scene.remove(others[id].group); delete others[id]; });
   Object.values(handLinks).forEach(m => scene.remove(m)); Object.keys(handLinks).forEach(k => delete handLinks[k]);
@@ -3824,7 +3755,7 @@ function lookChanged() {
   rebuildMyAvatar();
   socket.emit('updateLook', { gender: myGender, outfitColor: myOutfitColor, hairStyle: myHairStyle });
   document.getElementById('stat-look').textContent = `${myGender}, ${myHairStyle} hair`;
-  clearTimeout(saveTimer); saveTimer = setTimeout(saveProfile, 700);   // remembered for next visit (members only)
+  clearTimeout(saveTimer); saveTimer = setTimeout(saveProfile, 700);
 }
 function paintSettings() {
   document.querySelectorAll('#set-gender .set-pill').forEach(b => b.classList.toggle('selected', b.dataset.sg === myGender));
@@ -3848,7 +3779,6 @@ document.querySelectorAll('#set-role .set-pill').forEach(b => b.onclick = () => 
   try { if (want) sessionStorage.setItem('cityRole', want); else sessionStorage.removeItem('cityRole'); } catch (e) {}
   if (auth.loggedIn) { clearTimeout(saveTimer); saveProfile().finally(() => location.reload()); } else location.reload();
 });
-// A guest who logs in while already in the city: keep the look they picked on the very first login, otherwise load their saved one
 function afterLoginInGame() {
   if (!auth.profile) { saveProfile(); return; }
   myGender = myRole ? myGender : auth.profile.gender; myOutfitColor = auth.profile.outfit; myHairStyle = auth.profile.hair;
