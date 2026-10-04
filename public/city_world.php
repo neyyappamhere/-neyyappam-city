@@ -626,7 +626,7 @@
       <button type="button" class="priv-main" id="pj-join" disabled>Join room</button>
     </div>
 
-    <p class="priv-note">Only people inside the room can hear each other. For safety and legal reasons moderators can enter a private room — you will always see a notice when one does. Voice is never recorded.</p>
+    <p class="priv-note">You and your people move into your own private copy of the place — nobody else can see you, hear you or walk in. For safety and legal reasons moderators can enter a private room — you will always see a notice when one does. Voice is never recorded.</p>
   </div>
 </div>
 
@@ -2593,6 +2593,7 @@ function updateMovement() {
     checkDeliveryProximity();
     checkTreasureProximity();
   }
+  if (privScene) clampPrivate();
   // Sink into the water while swimming, with a gentle bob
   const targetY = swimming ? -0.65 + Math.sin(performance.now()/350) * 0.06 : (onBridge(myAvatar.position.x, myAvatar.position.z) ? BRIDGE.y : 0);
   myAvatar.position.y += (targetY - myAvatar.position.y) * 0.25;
@@ -3200,6 +3201,7 @@ function renderPrivSize() {
 function openPrivate(view, roomId) {
   if (!inGame()) { showToast('Enter the city first'); return; }
   if (!auth.loggedIn) { requireLogin('private', () => openPrivate(view, roomId)); return; }   // popup first; re-opens after a successful login
+  if (drivingCarId) { showToast('🚗 Get out of your vehicle first'); return; }
   socket.emit('privateConfig', (cfg) => { if (cfg && cfg.places) { PRIV_PLACES = cfg.places; PRIV_MAX = cfg.max || 5; renderPrivPlaces(); renderPrivSize(); } });
   renderPrivPlaces(); renderPrivSize();
   if (privRoom && privMine) { showReady(privMine); }
@@ -3331,6 +3333,145 @@ $p('priv-mute').onclick = async () => {
   if (lkPriv) { try { await lkPriv.localParticipant.setMicrophoneEnabled(!privMuted); } catch (e) {} }
   paintPrivBar();
 };
+
+
+/* =========================================================
+   8b) PRIVATE AREAS — each private room is its own themed place, far away from the city.
+   The server only shows you the people in YOUR room, so nobody else can see or enter it.
+   To add a new area: add it to PRIVATE_PLACES in server.js (it gets a simple park until you add a builder here).
+   ========================================================= */
+const PRIVATE_ORIGIN = { x: 5000, z: 5000 };   // must match server.js
+let privScene = null;
+function srnd(i) { const x = Math.sin(i * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); }   // same "random" for everyone
+function pm(color, o) { return new THREE.MeshStandardMaterial(Object.assign({ color, roughness: 0.9 }, o || {})); }
+function pbox(g, w, h, d, color, x, y, z, o) { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), pm(color, o)); m.position.set(x, y, z); g.add(m); return m; }
+function pcyl(g, rt, rb, h, color, x, y, z, seg, o) { const m = new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, seg || 12), pm(color, o)); m.position.set(x, y, z); g.add(m); return m; }
+function pcone(g, r, h, color, x, y, z) { const m = new THREE.Mesh(new THREE.ConeGeometry(r, h, 8), pm(color)); m.position.set(x, y, z); g.add(m); return m; }
+function psph(g, r, color, x, y, z, o, sy) { const m = new THREE.Mesh(new THREE.SphereGeometry(r, 12, 10), pm(color, o)); m.position.set(x, y, z); if (sy) m.scale.y = sy; g.add(m); return m; }
+function pdisc(g, r, color, y, o) { const m = new THREE.Mesh(new THREE.CircleGeometry(r, 48), pm(color, o)); m.rotation.x = -Math.PI / 2; m.position.y = y; g.add(m); return m; }
+function pplane(g, w, d, color, x, y, z, o) { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), pm(color, o)); m.rotation.x = -Math.PI / 2; m.position.set(x, y, z); g.add(m); return m; }
+function psign(g, text, y, z, w) { const sp = makeLabel(text); sp.scale.set(w, w / 4, 1); sp.position.set(0, y, z); g.add(sp); return sp; }
+function ptree(g, x, z, k) { k = k || 1; pcyl(g, 0.25 * k, 0.35 * k, 2 * k, 0x7a5230, x, k, z, 6); pcone(g, 1.5 * k, 2.6 * k, 0x2e8b3d, x, 3.2 * k, z); pcone(g, 1.15 * k, 2.2 * k, 0x3aa04a, x, 4.4 * k, z); }
+function ppalm(g, x, z) { pcyl(g, 0.18, 0.3, 4.6, 0x9a6b3c, x, 2.3, z, 6); for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2; const l = pbox(g, 0.4, 0.08, 2.6, 0x2fa84f, x + Math.sin(a) * 1.1, 4.7, z + Math.cos(a) * 1.1); l.rotation.y = a; l.rotation.x = 0.4; } }
+function pbench(g, x, z) { const b = new THREE.Group(); pbox(b, 2.2, 0.15, 0.7, 0x8b5a2b, 0, 0.55, 0); pbox(b, 2.2, 0.7, 0.12, 0x8b5a2b, 0, 0.95, -0.32); pbox(b, 0.12, 0.55, 0.6, 0x5b3a1a, -0.95, 0.27, 0); pbox(b, 0.12, 0.55, 0.6, 0x5b3a1a, 0.95, 0.27, 0); b.position.set(x, 0, z); b.rotation.y = Math.atan2(-x, -z); g.add(b); }
+function plamp(g, x, z, c) { pcyl(g, 0.07, 0.09, 3.2, 0x333333, x, 1.6, z, 6); psph(g, 0.3, c || 0xfff1b0, x, 3.3, z, { emissive: c || 0xfff1b0, emissiveIntensity: 1 }); }
+function pmug(g, x, y, z, color, k) { k = k || 1; pcyl(g, 0.22 * k, 0.2 * k, 0.4 * k, color, x, y + 0.2 * k, z, 12); const h = new THREE.Mesh(new THREE.TorusGeometry(0.12 * k, 0.04 * k, 6, 12), pm(color)); h.position.set(x + 0.26 * k, y + 0.2 * k, z); g.add(h); }
+function proom(g, half, wallColor, floorColor, ceilColor, wallH) {
+  pbox(g, half * 2 + 2, 0.2, half * 2 + 2, floorColor, 0, -0.1, 0);
+  [[0, -half, half * 2 + 1, 0.6], [0, half, half * 2 + 1, 0.6]].forEach(w => pbox(g, w[2], wallH, w[3], wallColor, w[0], wallH / 2, w[1]));
+  [[-half, 0], [half, 0]].forEach(w => pbox(g, 0.6, wallH, half * 2 + 1, wallColor, w[0], wallH / 2, w[1]));
+  const ceil = pplane(g, half * 2 + 2, half * 2 + 2, ceilColor, 0, wallH, 0, { side: THREE.DoubleSide }); ceil.rotation.x = Math.PI / 2;
+}
+function plight(g, color, intensity, dist, x, y, z) { const l = new THREE.PointLight(color, intensity, dist); l.position.set(x, y, z); g.add(l); }
+
+function buildSarovaram(g) {
+  pdisc(g, 70, 0x6fbf4a, -0.02);
+  const lake = pdisc(g, 9, 0x4fb3e8, 0.03, { roughness: 0.2, metalness: 0.1 }); lake.position.set(-9, 0.03, -9);
+  const path = new THREE.Mesh(new THREE.RingGeometry(11, 13.5, 48), pm(0xd9c79a)); path.rotation.x = -Math.PI / 2; path.position.y = 0.03; g.add(path);
+  for (let i = 0; i < 16; i++) { const a = i / 16 * Math.PI * 2, r = 27 + srnd(i) * 6; ptree(g, Math.cos(a) * r, Math.sin(a) * r, 1 + srnd(i + 40) * 0.5); }
+  for (let i = 0; i < 4; i++) { const a = i / 4 * Math.PI * 2 + 0.6; pbench(g, Math.cos(a) * 14.5, Math.sin(a) * 14.5); plamp(g, Math.cos(a + 0.5) * 12.3, Math.sin(a + 0.5) * 12.3); }
+  const fc = [0xff5c8a, 0xffd23f, 0xffffff, 0xb57bff];
+  for (let i = 0; i < 40; i++) { const a = srnd(i + 7) * Math.PI * 2, r = 4 + srnd(i + 90) * 21; if (Math.hypot(Math.cos(a) * r + 9, Math.sin(a) * r + 9) < 10) continue; psph(g, 0.16, fc[i % 4], Math.cos(a) * r, 0.18, Math.sin(a) * r); }
+  psign(g, '🌳 Sarovaram Park', 6.5, -18, 9);
+  return { radius: 24, bg: 0x8ed1fc, fog: [0xbfe3ff, 30, 110] };
+}
+function buildBeach(g) {
+  pdisc(g, 70, 0xf3dc9f, -0.02);
+  pplane(g, 220, 90, 0x2aa9e0, 0, 0.02, -72, { roughness: 0.25, metalness: 0.1 });
+  [-32, -39, -48].forEach((z, i) => pplane(g, 220, 1.3 - i * 0.2, 0x8fdcf5, 0, 0.04, z));
+  pplane(g, 220, 1.2, 0xffffff, 0, 0.05, -27.5);
+  const uc = [0xe74c3c, 0xf1c40f, 0x3498db, 0xff69b4];
+  for (let i = 0; i < 4; i++) { const x = -15 + i * 10, z = -6 + (i % 2) * 8; pcyl(g, 0.08, 0.08, 3, 0xffffff, x, 1.5, z, 6); pcone(g, 2.2, 0.8, uc[i], x, 3.1, z); pbox(g, 2.2, 0.08, 0.9, uc[(i + 1) % 4], x + 0.3, 0.04, z + 1.8); pbox(g, 1.1, 0.5, 0.8, 0xffffff, x - 1.6, 0.3, z + 0.6); }
+  [[-22, -12], [-24, 4], [22, -10], [24, 6], [-18, 16], [19, 17]].forEach(c => ppalm(g, c[0], c[1]));
+  for (let i = 0; i < 18; i++) psph(g, 0.14, 0xffc4d6, (srnd(i + 3) - 0.5) * 40, 0.1, (srnd(i + 33) - 0.5) * 30 + 2, null, 0.6);
+  psph(g, 5, 0xffe066, 30, 28, -90, { emissive: 0xffe066, emissiveIntensity: 1 });
+  psign(g, '🏖️ Beach', 6.5, -22, 7);
+  return { radius: 24, bg: 0x87ceeb, fog: [0xcdeffd, 40, 150] };
+}
+function buildHappyCup(g) {
+  proom(g, 20, 0xf0d9b5, 0xb98a5e, 0x3a261a, 6);
+  pdisc(g, 6.5, 0xc0392b, 0.02);
+  for (let i = 0; i < 6; i++) {
+    const a = i / 6 * Math.PI * 2 + 0.5, x = Math.cos(a) * 8.5, z = Math.sin(a) * 8.5 + 2;
+    pcyl(g, 0.95, 0.95, 0.08, 0xfff4e0, x, 1, z, 20); pcyl(g, 0.1, 0.1, 1, 0x4a2f1b, x, 0.5, z, 8); pcyl(g, 0.45, 0.45, 0.06, 0x4a2f1b, x, 0.03, z, 12);
+    pmug(g, x + 0.2, 1.04, z, 0xffffff); pmug(g, x - 0.35, 1.04, z + 0.2, 0xffd23f);
+    [0, Math.PI].forEach(o => { const cx = x + Math.cos(a + o) * 1.5, cz = z + Math.sin(a + o) * 1.5; pbox(g, 0.7, 0.1, 0.7, 0xa23b2a, cx, 0.6, cz); pbox(g, 0.7, 0.7, 0.1, 0xa23b2a, cx - Math.cos(a + o) * 0.3, 1, cz - Math.sin(a + o) * 0.3); pcyl(g, 0.05, 0.05, 0.6, 0x333333, cx, 0.3, cz, 6); });
+    psph(g, 0.28, 0xfff1c1, x, 4.6, z, { emissive: 0xfff1c1, emissiveIntensity: 1 }); pcyl(g, 0.02, 0.02, 1.4, 0x222222, x, 5.3, z, 4);
+  }
+  pbox(g, 11, 1.2, 1.3, 0x6b4423, 0, 0.6, -14); pbox(g, 11.4, 0.12, 1.6, 0xd9b28a, 0, 1.25, -14);
+  pbox(g, 11, 0.12, 0.6, 0x6b4423, 0, 2.3, -18.4); pbox(g, 11, 0.12, 0.6, 0x6b4423, 0, 3.4, -18.4);
+  for (let i = 0; i < 9; i++) { pmug(g, -4.6 + i * 1.15, 2.36, -18.4, [0xff6b6b, 0xffd23f, 0x4dd4ac, 0x6ea8fe, 0xffffff][i % 5]); pmug(g, -4.6 + i * 1.15, 3.46, -18.4, [0xffffff, 0xff9ff3, 0xfeca57][i % 3]); }
+  pbox(g, 1.4, 0.9, 0.8, 0x888c93, -3, 1.7, -14); pbox(g, 1.1, 0.7, 0.8, 0x5d6168, 1, 1.6, -14);
+  [[-15, 15], [15, 15], [-15, -4], [15, -4]].forEach(c => { pcyl(g, 0.5, 0.4, 0.8, 0x9c5a3c, c[0], 0.4, c[1], 10); psph(g, 0.8, 0x2f9e44, c[0], 1.5, c[1]); });
+  psign(g, '☕ Happy Cup', 4.6, -18.1, 9);
+  plight(g, 0xffe2a8, 1.1, 30, 0, 4.4, -2); plight(g, 0xffe2a8, 0.9, 26, 9, 4.4, 8); plight(g, 0xffe2a8, 0.9, 26, -9, 4.4, 8);
+  return { radius: 12, bg: 0x2b1a12, fog: [0x2b1a12, 34, 80] };
+}
+function buildHugAMug(g) {
+  proom(g, 20, 0xf6d6e0, 0xe9c9a6, 0xfbe7ee, 6.5);
+  pdisc(g, 5.5, 0xfff2cc, 0.02);
+  pcyl(g, 2.2, 1.9, 3.2, 0xffffff, 0, 1.6, -7, 24); pcyl(g, 1.95, 1.95, 0.05, 0x6b3e26, 0, 3.15, -7, 24);
+  const h = new THREE.Mesh(new THREE.TorusGeometry(1.1, 0.3, 8, 20), pm(0xffffff)); h.position.set(2.6, 1.7, -7); g.add(h);
+  const hg = new THREE.Mesh(new THREE.SphereGeometry(0.5, 10, 8), pm(0xff5c8a)); hg.scale.set(1, 0.9, 0.4); hg.position.set(0, 1.7, -4.8); g.add(hg);
+  for (let i = 0; i < 3; i++) psph(g, 0.55 - i * 0.1, 0xffffff, -0.3 + i * 0.35, 4 + i * 0.7, -7, { transparent: true, opacity: 0.45 - i * 0.1, roughness: 1 });
+  [[-9, 6, 0xd9577d], [9, 6, 0x7d8cd9], [0, 12, 0xe0a13b]].forEach((c, i) => {
+    const sofa = new THREE.Group(); pbox(sofa, 4.4, 0.7, 1.8, c[2], 0, 0.55, 0); pbox(sofa, 4.4, 1.2, 0.5, c[2], 0, 1.1, -0.9); pbox(sofa, 0.5, 1, 1.8, c[2], -2.2, 0.8, 0); pbox(sofa, 0.5, 1, 1.8, c[2], 2.2, 0.8, 0);
+    pbox(sofa, 0.8, 0.8, 0.3, 0xffffff, -1.2, 1.1, -0.4); pbox(sofa, 0.8, 0.8, 0.3, 0xffd9e4, 1.2, 1.1, -0.4);
+    sofa.position.set(c[0], 0, c[1]); sofa.rotation.y = Math.atan2(-c[0], -c[1] + (i === 2 ? 4 : 0)); g.add(sofa);
+  });
+  [[-5, 1, 0x6dd5c0], [5, 1, 0xffb86b], [-12, -2, 0xb084f5], [12, -1, 0xff7aa8]].forEach(b => psph(g, 1, b[2], b[0], 0.7, b[1], null, 0.7));
+  for (let i = 0; i < 18; i++) { const x = -15 + i * (30 / 17); psph(g, 0.14, [0xffd23f, 0xff7aa8, 0xffffff, 0x7ad9ff][i % 4], x, 4.6 - Math.sin(i / 17 * Math.PI) * 0.9, -12, { emissive: [0xffd23f, 0xff7aa8, 0xffffff, 0x7ad9ff][i % 4], emissiveIntensity: 1 }); }
+  [[-16, 14], [16, 14], [-16, -14], [16, -14]].forEach(c => { pcyl(g, 0.5, 0.4, 0.8, 0xc47a8f, c[0], 0.4, c[1], 10); psph(g, 0.8, 0x3aa86a, c[0], 1.5, c[1]); });
+  psign(g, '🫶 Hug a Mug', 5, -19.2, 9);
+  plight(g, 0xffb3d1, 1.1, 30, 0, 4.6, 0); plight(g, 0xffd9b0, 0.8, 24, 0, 4.6, -10);
+  return { radius: 12, bg: 0x3b2230, fog: [0x3b2230, 34, 80] };
+}
+function buildGenericArea(g, info) {   // used for any area you add on the server before a custom builder exists
+  pdisc(g, 70, 0x6fbf4a, -0.02);
+  for (let i = 0; i < 12; i++) { const a = i / 12 * Math.PI * 2, r = 26 + srnd(i) * 5; ptree(g, Math.cos(a) * r, Math.sin(a) * r, 1 + srnd(i + 20) * 0.4); }
+  pbench(g, 6, 5); pbench(g, -6, 5); plamp(g, 0, -8);
+  psign(g, (info.emoji || '🔒') + ' ' + info.name, 6, -16, 9);
+  return { radius: 22, bg: 0x8ed1fc, fog: [0xbfe3ff, 30, 110] };
+}
+const PRIVATE_SCENES = { sarovaram: buildSarovaram, beach: buildBeach, happycup: buildHappyCup, hugamug: buildHugAMug };
+
+function disposeGroup(g) {
+  g.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) { (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => { if (m.map) m.map.dispose(); m.dispose(); }); } });
+}
+function enterPrivateScene(placeId, spawn) {
+  if (privScene) leavePrivateScene(null);
+  const info = PRIV_PLACES.find(p => p.id === placeId) || { id: placeId, name: placeId, emoji: '🔒' };
+  const group = new THREE.Group(); group.position.set(PRIVATE_ORIGIN.x, 0, PRIVATE_ORIGIN.z);
+  const spec = (PRIVATE_SCENES[placeId] || buildGenericArea)(group, info);
+  scene.add(group);
+  privScene = { group, radius: spec.radius, prevBg: scene.background, prevFog: scene.fog, back: { x: myAvatar.position.x, y: myAvatar.position.y, z: myAvatar.position.z, rotY: myAvatar.rotation.y } };
+  scene.background = new THREE.Color(spec.bg);
+  scene.fog = new THREE.Fog(spec.fog[0], spec.fog[1], spec.fog[2]);
+  ['shop-overlay', 'stats-overlay', 'inventory-overlay'].forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
+  myAvatar.position.set(spawn.x, 0, spawn.z);
+  camYaw = Math.atan2(PRIVATE_ORIGIN.x - spawn.x, PRIVATE_ORIGIN.z - spawn.z);
+  socket.emit('move', { x: myAvatar.position.x, y: 0, z: myAvatar.position.z, rotY: myAvatar.rotation.y });
+}
+function leavePrivateScene(spawn) {
+  if (!privScene) return;
+  const ps = privScene; privScene = null;
+  scene.remove(ps.group); disposeGroup(ps.group);
+  scene.background = ps.prevBg; scene.fog = ps.prevFog;
+  const to = spawn || ps.back;
+  myAvatar.position.set(to.x, to.y || 0, to.z); myAvatar.rotation.y = to.rotY || 0;
+  socket.emit('move', { x: myAvatar.position.x, y: myAvatar.position.y, z: myAvatar.position.z, rotY: myAvatar.rotation.y });
+}
+function clampPrivate() {
+  const dx = myAvatar.position.x - PRIVATE_ORIGIN.x, dz = myAvatar.position.z - PRIVATE_ORIGIN.z, d = Math.hypot(dx, dz);
+  if (d > privScene.radius) { myAvatar.position.x = PRIVATE_ORIGIN.x + dx / d * privScene.radius; myAvatar.position.z = PRIVATE_ORIGIN.z + dz / d * privScene.radius; }
+}
+// The server moves us into / out of a room's area and then sends ONLY the people who are in that same area.
+socket.on('spaceChanged', ({ place, spawn }) => {
+  Object.keys(others).forEach(id => { scene.remove(others[id].group); delete others[id]; });
+  if (place) enterPrivateScene(place, spawn); else leavePrivateScene(spawn);
+  refreshOnlineCount();
+});
+socket.on('disconnect', () => { if (privScene) { leavePrivateScene(null); cleanupPrivate(); } });
 
 /* =========================================================
    Character settings (inside the Stats panel). Name is locked to the account.
