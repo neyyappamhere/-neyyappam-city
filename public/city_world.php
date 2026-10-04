@@ -365,7 +365,8 @@
   #private-bar.open{ display:flex; }
   #private-bar button{ border:none; border-radius:16px; padding:8px 12px; min-height:36px; font-weight:800; cursor:pointer; font-family:inherit; font-size:.95em; background:rgba(255,255,255,.2); color:#fff; }
   #private-bar button.leave{ background:#fff; color:#d90085; }
-  #priv-mod{ display:none; width:100%; text-align:center; background:rgba(0,0,0,.35); border-radius:12px; padding:5px 8px; font-size:.92em; }
+  #priv-mod{ display:none; width:34px; height:34px; align-items:center; justify-content:center; background:rgba(0,0,0,.4); color:#ffd166; border-radius:50%; font-size:.95em; cursor:pointer; animation:modPulse 2.4s infinite; }
+  @keyframes modPulse{ 0%,100%{ box-shadow:0 0 0 0 rgba(255,209,102,.55); } 50%{ box-shadow:0 0 0 6px rgba(255,209,102,0); } }
   @media (max-width:700px){ #private-btn{ top:294px; left:auto; right:14px; } #private-bar{ top:104px; } }
 
   /* ===== Fun & social: slap / hold hands / sit (consent prompts reuse the kiss-prompt look) ===== */
@@ -684,7 +685,7 @@
   <button type="button" id="priv-info"><i class="fa-solid fa-share-nodes"></i> Invite</button>
   <button type="button" id="priv-mute"><i class="fa-solid fa-microphone"></i> Mute</button>
   <button type="button" class="leave" id="priv-leave"><i class="fa-solid fa-phone-slash"></i> Leave</button>
-  <div id="priv-mod">🛡️ A moderator has joined this room for safety</div>
+  <span id="priv-mod" role="img" title="A moderator is in this room" aria-label="A moderator is in this room"><i class="fa-solid fa-binoculars"></i></span>
 </div>
 
 <div id="private-overlay">
@@ -3606,7 +3607,7 @@ function paintPrivBar() {
   if (!privRoom) { bar.classList.remove('open'); return; }
   const names = privRoom.members.map(m => m.name).join(', ');
   $p('priv-title').textContent = '🔒 ' + privRoom.emoji + ' ' + privRoom.placeName + ' · ' + privRoom.id + ' · ' + (privRoom.members.length < 2 ? 'waiting for others…' : names);
-  $p('priv-mod').style.display = privMods.size ? 'block' : 'none';
+  $p('priv-mod').style.display = privMods.size ? 'flex' : 'none';   // small binoculars icon while a moderator is in the room
   $p('priv-info').style.display = privMine ? '' : 'none';
   $p('priv-mute').innerHTML = privMuted ? '<i class="fa-solid fa-microphone-slash"></i> Unmute' : '<i class="fa-solid fa-microphone"></i> Mute';
   bar.classList.add('open');
@@ -3634,7 +3635,7 @@ async function connectPrivate() {
     });
     room.on(LivekitClient.RoomEvent.TrackUnsubscribed, (track) => { track.detach().forEach(el => el.remove()); });
     const isMod = (p) => String(p.identity || '').startsWith('mod-');
-    room.on(LivekitClient.RoomEvent.ParticipantConnected, (p) => { if (isMod(p)) { privMods.add(p.identity); showToast('🛡️ A moderator joined this private room'); paintPrivBar(); } });
+    room.on(LivekitClient.RoomEvent.ParticipantConnected, (p) => { if (isMod(p)) { privMods.add(p.identity); paintPrivBar(); } });
     room.on(LivekitClient.RoomEvent.ParticipantDisconnected, (p) => { if (isMod(p)) { privMods.delete(p.identity); paintPrivBar(); } });
     await room.connect(r.url, r.token);
     lkPriv = room;
@@ -3658,7 +3659,8 @@ socket.on('privateRoomClosed', ({ reason }) => {
   const msg = { ended: 'The private room ended', expired: 'The private room closed after being empty too long', closed_by_admin: 'A moderator closed this private room', logout: 'You were logged out' }[reason] || 'The private room closed';
   cleanupPrivate(); showToast('🔒 ' + msg);
 });
-$p('priv-leave').onclick = () => { socket.emit('privateLeave'); cleanupPrivate(); showToast('You left the private room'); };
+$p('priv-mod').onclick = () => showToast('🔭 A moderator is in this room for safety');
+$p('priv-leave').onclick =() => { socket.emit('privateLeave'); cleanupPrivate(); showToast('You left the private room'); };
 $p('priv-mute').onclick = async () => {
   privMuted = !privMuted;
   if (lkPriv) { try { await lkPriv.localParticipant.setMicrophoneEnabled(!privMuted); } catch (e) {} }
