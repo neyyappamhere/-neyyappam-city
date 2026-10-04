@@ -827,6 +827,13 @@ refreshAuth();
    1) CITY GENERATION — bright low-poly daytime style (blue sky, brick buildings, toon cars)
    ========================================================= */
 const scene = new THREE.Scene();
+
+// Declared up here (not near where they're used later) because the plaza benches below are built
+// immediately at startup, before later `const`/`let` declarations in this file would run.
+const BENCHES = [];
+let sitting = false, mySitPos = null, nearBench = null;
+let handWith = null, handPending = null;     // holdWith: id of the player we're linked with
+const handLinks = {};                         // pairKey -> THREE.Group (the visual link between two linked avatars)
 scene.fog = new THREE.Fog(0xdcebd4, 45, 170);
 
 const camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.1, 1000);
@@ -3275,10 +3282,6 @@ mapCanvas.addEventListener('click', (e) => {
 /* =========================================================
    8) PRIVATE VOICE ROOMS — create (Room ID + passcode + share link) / join (ID or link + passcode)
    ========================================================= */
-const BENCHES = [];
-let sitting = false, mySitPos = null, nearBench = null;
-let handWith = null, handPending = null;     // holdWith: id of the player we're linked with
-const handLinks = {};                         // pairKey -> THREE.Group (the visual link between two linked avatars)
 let PRIV_PLACES = [{ id: 'happycup', name: 'Happy Cup', emoji: '☕' }, { id: 'sarovaram', name: 'Sarovaram Park', emoji: '🌳' }, { id: 'beach', name: 'Beach', emoji: '🏖️' }, { id: 'hugamug', name: 'Hug a Mug', emoji: '🫶' }];
 let PRIV_MAX = 5;
 let privRoom = null, lkPriv = null, privConnecting = false, privMuted = false, privPlace = null, privSize = 2, privMods = new Set(), privMine = null, privFound = null;
