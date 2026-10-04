@@ -367,6 +367,16 @@
   #private-bar button.leave{ background:#fff; color:#d90085; }
   #priv-mod{ display:none; width:100%; text-align:center; background:rgba(0,0,0,.35); border-radius:12px; padding:5px 8px; font-size:.92em; }
   @media (max-width:700px){ #private-btn{ top:294px; left:auto; right:14px; } #private-bar{ top:104px; } }
+
+  /* ===== Fun & social: slap / hold hands / sit (consent prompts reuse the kiss-prompt look) ===== */
+  #hand-prompt{ display:none; position:absolute; left:50%; top:90px; transform:translateX(-50%); z-index:9; background:rgba(60,15,40,.92);
+    border:2px solid #FE019A; border-radius:16px; padding:12px 16px; color:#fff; text-align:center; max-width:90vw; }
+  #hand-prompt p{ margin:0 0 8px; font-weight:800; } #hand-prompt .row{ display:flex; gap:8px; justify-content:center; }
+  #hand-prompt button{ border:none; border-radius:10px; padding:9px 14px; min-height:40px; font-weight:800; cursor:pointer; font-family:inherit; }
+  #hp-yes{ background:#FE019A; color:#fff; } #hp-no{ background:#444; color:#fff; }
+  #sit-prompt{ display:none; position:absolute; left:50%; bottom:190px; transform:translateX(-50%); z-index:6; background:rgba(20,15,10,.85); color:#fff; padding:10px 20px; border:none; border-radius:20px; font-weight:700; font-size:.85em; cursor:pointer; }
+  #forced-mute-note{ display:none; position:absolute; top:10px; left:50%; transform:translateX(-50%); z-index:30; background:#c0392b; color:#fff;
+    font-weight:800; padding:8px 16px; border-radius:20px; font-size:.82em; }
 </style>
 </head>
 <body>
@@ -537,12 +547,17 @@
 <button id="cart-call" class="rbtn" style="display:none; position:absolute; right:16px; bottom:150px; z-index:6;">🐂 Moo (H)</button>
 <div id="social-ui" style="display:none; position:absolute; left:50%; bottom:250px; transform:translateX(-50%); z-index:6; gap:6px;">
   <button id="kiss-btn" class="rbtn">💋 Kiss (K)</button>
+  <button id="slap-btn" class="rbtn">🖐️ Slap</button>
 </div>
 <div id="emote-bar" style="display:none; position:absolute; right:16px; bottom:220px; z-index:6; flex-direction:column; gap:6px;">
   <button id="emote-dance" class="rbtn" title="Dance (X)">💃</button>
   <button id="emote-laugh" class="rbtn" title="Laugh (L)">😂</button>
   <button id="emote-aiyyo" class="rbtn" title="Aiyyo! (Z)">😱</button>
+  <button id="hand-btn" class="rbtn" title="Hold hands (J)">🤝</button>
 </div>
+<div id="forced-mute-note">🔇 A moderator has muted your mic in this room</div>
+<div id="sit-prompt" style="display:none">Press E to sit</div>
+<div id="hand-prompt"><p id="hp-text">—</p><div class="row"><button id="hp-no">Not now</button><button id="hp-yes">🤝 Hold hands</button></div></div>
 <div id="kiss-prompt" style="display:none; position:absolute; left:50%; top:90px; transform:translateX(-50%); z-index:9; background:rgba(60,15,40,.94); color:#fff; padding:12px 16px; border-radius:16px; text-align:center; font-weight:700; font-size:.85em;">
   <div id="kiss-text">💋</div>
   <div style="display:flex; gap:8px; margin-top:8px; justify-content:center; flex-wrap:wrap;">
@@ -1189,6 +1204,9 @@ function nearShop() {
   const cx = 10, cz = 9, w = 12, d = 8, h = 5;
   const plaza = new THREE.Mesh(new THREE.BoxGeometry(14, 0.25, 14), new THREE.MeshStandardMaterial({ color: 0xd8d6cc }));
   plaza.position.set(10, 0.12, 10); scene.add(plaza);
+
+  // A few public benches to sit on — pbench()/BENCHES are defined further down (function declarations are hoisted).
+  [[16, 10], [4, 16], [10, 4], [-14, -6], [14, -40]].forEach(b => { pbench(scene, b[0], b[1]); BENCHES.push({ x: b[0], z: b[1] }); });
 
   const body = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshStandardMaterial({ color: 0x1f8a8a }));
   body.position.set(cx, h/2 + 0.25, cz); scene.add(body);
@@ -1899,10 +1917,13 @@ function showEmote(id, type) {
   const v = earVol(g.position.x, g.position.z, 30);
   if (type === 'laugh') SND.laugh(v); else if (type === 'aiyyo') SND.aiyyo(v);
 }
+let kissFreeze = 0;
 function kissFx(fromId, toId) {
   const a = avatarOf(fromId), b = avatarOf(toId); if (!a || !b) return;
   showEmote(fromId, 'kiss'); showEmote(toId, 'blush');
-  if (fromId === socket.id) a.rotation.y = Math.atan2(b.position.x - a.position.x, b.position.z - a.position.z);
+  const yaw = Math.atan2(b.position.x - a.position.x, b.position.z - a.position.z);
+  a.rotation.y = yaw; b.rotation.y = yaw + Math.PI;        // both face each other, not just the one who kissed
+  if (fromId === socket.id || toId === socket.id) kissFreeze = performance.now() + 900;   // a brief, real pause for the moment
   const now = performance.now();
   for (let i = 0; i < 6; i++) { const sp = emojiSprite('❤️', 0.55); sp.visible = false; scene.add(sp); heartFx.push({ sp, a, b, t0: now + i * 170, dur: 1300, j: (Math.random() - 0.5) * 0.6 }); }
   const mid = earVol((a.position.x + b.position.x) / 2, (a.position.z + b.position.z) / 2, 30);
@@ -1927,7 +1948,7 @@ document.getElementById('kiss-block').onclick = () => { socket.emit('setNoKiss',
 addEventListener('keydown', e => {
   if (/INPUT|TEXTAREA/.test((e.target.tagName || ''))) return;
   const k = e.key.toLowerCase();
-  if (k === 'k') doKiss(); else if (k === 'x') doEmote('dance'); else if (k === 'l') doEmote('laugh'); else if (k === 'z') doEmote('aiyyo');
+  if (k === 'k') doKiss(); else if (k === 'x') doEmote('dance'); else if (k === 'l') doEmote('laugh'); else if (k === 'z') doEmote('aiyyo'); else if (k === 'j') doHoldHands();
   else if (k === 'v') { document.body.classList.toggle('novintage'); showToast(document.body.classList.contains('novintage') ? '🎞️ 80s film look off' : '🎞️ 80s film look on'); }
 });
 
@@ -1953,10 +1974,93 @@ function funTick(now) {
   if (riverBoat) { riverBoat.position.y = 0.2 + Math.sin(now / 760) * 0.03; riverBoat.rotation.z = Math.sin(now / 1100) * 0.03; }
   if (riverNet) { riverNet.rotation.z = 0.32 + Math.sin(now / 2800) * 0.07; riverNetHang.rotation.z = -riverNet.rotation.z; }
 }
+function nearestBench() {
+  if (drivingCarId) return null;
+  let best = null, bd = 2.6;
+  BENCHES.forEach(b => { const d = Math.hypot(b.x - myAvatar.position.x, b.z - myAvatar.position.z); if (d < bd) { bd = d; best = b; } });
+  return best;
+}
+function toggleSit() {
+  if (sitting) { sitting = false; mySitPos = null; myAvatar.position.y = 0; socket.emit('sitState', { sitting: false }); return; }
+  const b = nearestBench(); if (!b) return;
+  sitting = true; mySitPos = b;
+  myAvatar.position.x = b.x; myAvatar.position.z = b.z; myAvatar.position.y = -0.35;
+  myAvatar.rotation.y = Math.atan2(-b.x, -b.z);         // face away from the bench, like sitting down on it
+  socket.emit('sitState', { sitting: true, x: b.x, y: 0, z: b.z, rotY: myAvatar.rotation.y });
+}
+document.getElementById('sit-prompt').onclick = toggleSit;
+function pairKey(a, b) { return [a, b].sort().join('|'); }
+function handLinkMesh() {
+  const g = new THREE.Group();
+  const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1, 6), new THREE.MeshStandardMaterial({ color: 0xffd1e6 }));
+  bar.rotation.z = Math.PI / 2; g.add(bar);
+  return g;
+}
+function doHoldHands() {
+  if (!inGame() || sitting) return;
+  if (handWith) { socket.emit('holdHandsRelease'); return; }
+  const id = nearestOther(); if (!id) { showToast('🤝 Nobody close enough'); return; }
+  socket.emit('holdHandsRequest', { targetId: id });
+  showToast('🤝 Invite sent — waiting for ' + (others[id].name || 'them'));
+}
+document.getElementById('hand-btn').onclick = doHoldHands;
+document.getElementById('hp-yes').onclick = () => { if (handPending) socket.emit('holdHandsRespond', { fromId: handPending, accept: true }); hideHandPrompt(); };
+document.getElementById('hp-no').onclick = () => { if (handPending) socket.emit('holdHandsRespond', { fromId: handPending, accept: false }); hideHandPrompt(); };
+function hideHandPrompt() { document.getElementById('hand-prompt').style.display = 'none'; handPending = null; }
+socket.on('holdHandsPrompt', ({ fromId, from }) => {
+  if (handWith) { socket.emit('holdHandsRespond', { fromId, accept: false }); return; }
+  handPending = fromId; document.getElementById('hp-text').textContent = '🤝 ' + from + ' wants to hold hands';
+  document.getElementById('hand-prompt').style.display = 'block';
+});
+socket.on('holdHandsDenied', ({ reason }) => showToast(reason === 'range' ? '🤝 Walk closer first' : reason === 'declined' ? '🤝 They said not now' : "🤝 Couldn't connect"));
+socket.on('holdHandsState', ({ a, b, holding }) => {
+  const mine = a === socket.id || b === socket.id;
+  const otherId = a === socket.id ? b : a;
+  if (mine) { handWith = holding ? otherId : null; document.getElementById('hand-btn').classList.toggle('selected', !!handWith); }
+  const key = pairKey(a, b);
+  if (!holding && handLinks[key]) { scene.remove(handLinks[key]); delete handLinks[key]; }
+  if (holding && !handLinks[key]) { const m = handLinkMesh(); scene.add(m); handLinks[key] = m; handLinks[key]._a = a; handLinks[key]._b = b; }
+});
+function updateHandLinks() {
+  Object.values(handLinks).forEach(m => {
+    const ga = avatarOf(m._a), gb = avatarOf(m._b); if (!ga || !gb) return;
+    const mid = ga.position.clone().add(gb.position).multiplyScalar(0.5); mid.y += 1.05;
+    m.position.copy(mid);
+    const dx = gb.position.x - ga.position.x, dz = gb.position.z - ga.position.z;
+    m.scale.x = Math.hypot(dx, dz); m.rotation.y = Math.atan2(dx, dz) + Math.PI / 2;
+  });
+}
+function doSlap() { if (!inGame()) return; const id = nearestOther(); if (!id) { showToast('🖐️ Nobody close enough'); return; } socket.emit('slap', { targetId: id }); }
+document.getElementById('slap-btn').onclick = doSlap;
+function slapFx(fromId, toId) {
+  const a = avatarOf(fromId), b = avatarOf(toId); if (!a || !b) return;
+  showEmote(toId, 'aiyyo');
+  if (fromId === socket.id) a.rotation.y = Math.atan2(b.position.x - a.position.x, b.position.z - a.position.z);
+  const sp = emojiSprite('✋', 0.7); sp.position.set(b.position.x, 2.1, b.position.z); scene.add(sp);
+  const t0 = performance.now(); const tick = () => { const t = (performance.now() - t0) / 350; if (t >= 1) { scene.remove(sp); return; } sp.position.y = 2.1 + Math.sin(t * Math.PI) * 0.5; sp.material.opacity = 1 - t; requestAnimationFrame(tick); };
+  tick();
+  SND.aiyyo(earVol((a.position.x + b.position.x) / 2, (a.position.z + b.position.z) / 2, 30));
+}
+socket.on('slapFx', ({ fromId, toId }) => slapFx(fromId, toId));
+socket.on('slapReceived', ({ from }) => showToast('🖐️ ' + from + ' slapped you!'));
+socket.on('slapDenied', ({ reason }) => showToast(reason === 'range' ? '🖐️ Too far — walk closer first' : reason === 'blocked' ? "🖐️ They've turned off slaps" : '🖐️ Wait a moment before slapping again'));
+document.getElementById('slap-block') && (document.getElementById('slap-block').onclick = () => { socket.emit('setNoSlap', true); showToast('🚫 Slaps are off — others can no longer slap you'); });
+socket.on('privateForceMute', ({ muted }) => {
+  document.getElementById('forced-mute-note').style.display = muted ? 'block' : 'none';
+  if (muted) { privMuted = true; if (lkPriv) lkPriv.localParticipant.setMicrophoneEnabled(false).catch(() => {}); showToast('🔇 A moderator has muted your mic'); }
+  paintPrivBar();
+});
+socket.on('privateKicked', () => { cleanupPrivate(); showToast('🔒 A moderator removed you from the private room'); });
+
 function socialTick() {
-  const gate = !inGame(), near = (!gate && !drivingCarId) ? nearestOther() : null;
+  const gate = !inGame(), near = (!gate && !drivingCarId && !sitting) ? nearestOther() : null;
   document.getElementById('social-ui').style.display = near ? 'flex' : 'none';
   if (near) document.getElementById('kiss-btn').textContent = '💋 Kiss ' + (others[near].name || '') + ' (K)';
+  document.getElementById('hand-btn').style.display = (near && !handWith) ? '' : (handWith ? '' : 'none');
+  document.getElementById('hand-btn').textContent = handWith ? '🤝 Let go' : '🤝 Hold hands';
+  document.getElementById('slap-btn').style.display = near ? '' : 'none';
+  nearBench = (!gate && !sitting) ? nearestBench() : null;
+  document.getElementById('sit-prompt').style.display = nearBench ? 'block' : 'none';
   document.getElementById('emote-bar').style.display = gate ? 'none' : 'flex';
 }
 // Role picker (name gate)
@@ -2415,7 +2519,8 @@ function findNearbyCar() {
 
 addEventListener('keydown', (e) => {
   if (e.key.toLowerCase() !== 'e') return;
-  triggerVehicleAction();
+  if (/INPUT|TEXTAREA/.test((e.target.tagName || ''))) return;
+  if (sitting || (nearBench && !drivingCarId)) toggleSit(); else triggerVehicleAction();
 });
 vehiclePrompt.addEventListener('click', triggerVehicleAction);
 
@@ -2594,6 +2699,7 @@ function updateMovement() {
     checkTreasureProximity();
   }
   if (privScene) clampPrivate();
+  if (performance.now() < kissFreeze) { renderer.render(scene, camera); return; }   // hold still for the kiss
   // Sink into the water while swimming, with a gentle bob
   const targetY = swimming ? -0.65 + Math.sin(performance.now()/350) * 0.06 : (onBridge(myAvatar.position.x, myAvatar.position.z) ? BRIDGE.y : 0);
   myAvatar.position.y += (targetY - myAvatar.position.y) * 0.25;
@@ -2942,6 +3048,7 @@ function addOtherPlayer(p) {
   group.add(label);
   scene.add(group);
   others[p.id] = { group, label, target: p, name: p.name, username: p.username, role: p.role };
+  if (p.sitting) group.position.y = -0.35;
 }
 
 setInterval(() => {
@@ -3168,6 +3275,10 @@ mapCanvas.addEventListener('click', (e) => {
 /* =========================================================
    8) PRIVATE VOICE ROOMS — create (Room ID + passcode + share link) / join (ID or link + passcode)
    ========================================================= */
+const BENCHES = [];
+let sitting = false, mySitPos = null, nearBench = null;
+let handWith = null, handPending = null;     // holdWith: id of the player we're linked with
+const handLinks = {};                         // pairKey -> THREE.Group (the visual link between two linked avatars)
 let PRIV_PLACES = [{ id: 'happycup', name: 'Happy Cup', emoji: '☕' }, { id: 'sarovaram', name: 'Sarovaram Park', emoji: '🌳' }, { id: 'beach', name: 'Beach', emoji: '🏖️' }, { id: 'hugamug', name: 'Hug a Mug', emoji: '🫶' }];
 let PRIV_MAX = 5;
 let privRoom = null, lkPriv = null, privConnecting = false, privMuted = false, privPlace = null, privSize = 2, privMods = new Set(), privMine = null, privFound = null;
@@ -3468,6 +3579,9 @@ function clampPrivate() {
 // The server moves us into / out of a room's area and then sends ONLY the people who are in that same area.
 socket.on('spaceChanged', ({ place, spawn }) => {
   Object.keys(others).forEach(id => { scene.remove(others[id].group); delete others[id]; });
+  Object.values(handLinks).forEach(m => scene.remove(m)); Object.keys(handLinks).forEach(k => delete handLinks[k]);
+  handWith = null; const hb = document.getElementById('hand-btn'); if (hb) hb.classList.remove('selected');
+  sitting = false; mySitPos = null; myAvatar.position.y = 0;
   if (place) enterPrivateScene(place, spawn); else leavePrivateScene(spawn);
   refreshOnlineCount();
 });
@@ -3565,10 +3679,12 @@ function animate() {
   Object.values(balloonMeshes).forEach(m => { if (m.visible) m.position.y = 1 + Math.sin(t*2 + m.userData.bobOffset)*0.2; });
   Object.values(chestMeshes).forEach(m => { if (m.visible) m.position.y = 0.9 + Math.sin(t*1.6 + m.userData.bobOffset)*0.12; });
   Object.values(others).forEach(o => {
-    o.group.position.lerp(new THREE.Vector3(o.target.x, o.target.y, o.target.z), 0.2);
+    const ty = o.target.sitting ? -0.35 : o.target.y;
+    o.group.position.lerp(new THREE.Vector3(o.target.x, ty, o.target.z), 0.2);
     o.group.rotation.y = o.target.rotY;
     tickAvatar(o.group, nowp);
   });
+  updateHandLinks();
   Object.values(cars).forEach(c => {
     if (c.target && c.occupiedBy && c.occupiedBy !== socket.id) {
       c.group.position.lerp(new THREE.Vector3(c.target.x, c.target.y, c.target.z), 0.25);
