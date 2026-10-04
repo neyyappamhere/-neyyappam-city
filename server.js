@@ -473,6 +473,7 @@ function enterSpace(sid, space, place) {
   if (!p || !sock) return;
   const old = p.space || 'public';
   if (old === space) return;
+  releaseHands(sid); p.sitting = false;
   sock.to('space:' + old).emit('playerLeft', sid);            // vanish from the old space
   sock.leave('space:' + old); sock.join('space:' + space);
   let spawn;
@@ -492,7 +493,7 @@ function enterSpace(sid, space, place) {
   sock.emit('currentPlayers', list);                           // only the people in the new space
   sock.to('space:' + space).emit('playerJoined', p);
 }
-const privateRooms = {};                       // ID -> { id, place, passcode, capacity, hostSid, members:Set, info:Map(sid->{uid,name,username}), startedAt, aloneSince }
+const privateRooms = {};                       // ID -> { id, place, passcode, capacity, hostSid, members:Set, muted:Set, info:Map(sid->{uid,name,username}), startedAt, aloneSince }
 const privAttempts = new Map();                // "uid:roomId" -> { n, until }   (wrong-passcode lockout)
 
 function newRoomId() { for (;;) { let id = ''; for (let i = 0; i < 6; i++) id += ROOM_ID_CHARS[crypto.randomInt(ROOM_ID_CHARS.length)]; if (!privateRooms[id]) return id; } }
@@ -509,7 +510,7 @@ function privatePublic(r) {
   const place = PRIVATE_PLACES[r.place] || { name: r.place, emoji: '🔒' };
   return {
     id: r.id, place: r.place, placeName: place.name, emoji: place.emoji, capacity: r.capacity, startedAt: r.startedAt, hostSid: r.hostSid,
-    members: [...r.members].map(sid => ({ sid, name: r.info.get(sid).name, username: r.info.get(sid).username }))
+    members: [...r.members].map(sid => ({ sid, name: r.info.get(sid).name, username: r.info.get(sid).username, muted: r.muted.has(sid) }))
   };
 }
 function privateBroadcast(r) { const pub = privatePublic(r); r.members.forEach(sid => io.to(sid).emit('privateRoomState', pub)); }
@@ -520,20 +521,44 @@ function closePrivateRoom(r, reason, adminId) {
   [...r.members].forEach(sid => enterSpace(sid, 'public'));    // everyone goes back to the city
   logPrivate({ event: 'room_end', room_id: r.id, place: r.place, admin_id: adminId || '', detail: reason });
 }
+function releaseHands(sid) {
+  const p = players[sid]; if (!p || !p.holdWith) return;
+  const other = p.holdWith, b = players[other];
+  p.holdWith = null; if (b) b.holdWith = null;
+  io.to(spaceRoom(p)).emit('holdHandsState', { a: sid, b: other, holding: false });
+}
 function leavePrivate(sid, reason) {
   const r = roomOfSid(sid); if (!r) return;
+  releaseHands(sid);
   const who = r.info.get(sid) || {};
   r.members.delete(sid);
   if (r.hostSid === sid && r.members.size) r.hostSid = [...r.members][0];   // someone else becomes host
   logPrivate({ event: 'member_leave', room_id: r.id, place: r.place, user_id: who.uid || '', detail: reason || 'left' });
   enterSpace(sid, 'public');                                   // back to the city (no-op if the socket is already gone)
+  r.muted.delete(sid);
   if (r.members.size === 0) closePrivateRoom(r, 'ended');
   else privateBroadcast(r);
 }
 function privateInfoForAdmin(r) {
   const pub = privatePublic(r);
   return { id: r.id, place: r.place, placeName: pub.placeName, capacity: r.capacity, startedAt: r.startedAt,
-           members: [...r.members].map(sid => ({ uid: r.info.get(sid).uid, name: r.info.get(sid).name, username: r.info.get(sid).username })) };
+           members: [...r.members].map(sid => ({ sid, uid: r.info.get(sid).uid, name: r.info.get(sid).name, username: r.info.get(sid).username, muted: !!r.muted.has(sid) })) };
+}
+function kickFromPrivate(sid, adminId) {
+  const r = roomOfSid(sid); if (!r) return false;
+  const who = r.info.get(sid) || {};
+  io.to(sid).emit('privateKicked', {});
+  logPrivate({ event: 'member_kick', room_id: r.id, place: r.place, user_id: who.uid || '', admin_id: adminId || '' });
+  leavePrivate(sid, 'kicked_by_admin');
+  return true;
+}
+function mutePrivate(sid, muted, adminId) {
+  const r = roomOfSid(sid); if (!r) return false;
+  if (muted) r.muted.add(sid); else r.muted.delete(sid);
+  io.to(sid).emit('privateForceMute', { muted });
+  logPrivate({ event: muted ? 'member_mute' : 'member_unmute', room_id: r.id, place: r.place, user_id: (r.info.get(sid) || {}).uid || '', admin_id: adminId || '' });
+  privateBroadcast(r);
+  return true;
 }
 // close rooms that have sat with fewer than 2 people for too long
 setInterval(() => {
@@ -575,6 +600,16 @@ app.post('/admin/private-rooms/:id/leave', (req, res) => {
   const r = privateRooms[req.params.id];
   logPrivate({ event: 'moderator_leave', room_id: req.params.id, place: r ? r.place : '', admin_id: String((req.body && req.body.adminId) || '').slice(0, 20) });
   res.json({ ok: true });
+});
+app.post('/admin/private-rooms/:id/kick', (req, res) => {
+  const sid = String((req.body && req.body.sid) || '');
+  const ok = kickFromPrivate(sid, String((req.body && req.body.adminId) || '').slice(0, 20));
+  res.json({ ok });
+});
+app.post('/admin/private-rooms/:id/mute', (req, res) => {
+  const sid = String((req.body && req.body.sid) || '');
+  const ok = mutePrivate(sid, !!(req.body && req.body.muted), String((req.body && req.body.adminId) || '').slice(0, 20));
+  res.json({ ok });
 });
 app.post('/admin/private-rooms/:id/close', (req, res) => {
   const r = privateRooms[req.params.id];
@@ -674,7 +709,7 @@ io.on('connection', (socket) => {
     p.lastPrivCreate = now;
     const capacity = Math.max(2, Math.min(PRIVATE_MAX, parseInt(d.capacity, 10) || 2));
     const id = newRoomId();
-    const r = { id, place: d.place, passcode: newPasscode(), capacity, hostSid: socket.id, members: new Set([socket.id]),
+    const r = { id, place: d.place, passcode: newPasscode(), capacity, hostSid: socket.id, members: new Set([socket.id]), muted: new Set(),
                 info: new Map([[socket.id, { uid: p.uid, name: p.name, username: p.username }]]), startedAt: now, aloneSince: now };
     privateRooms[id] = r;
     logPrivate({ event: 'room_start', room_id: id, place: r.place, user_id: p.uid, detail: 'capacity ' + capacity });
@@ -748,6 +783,14 @@ io.on('connection', (socket) => {
     const p = players[socket.id];
     if (!p) return;
     p.x = pos.x; p.y = pos.y; p.z = pos.z; p.rotY = pos.rotY;
+    if (p.sitting) p.sitting = false;                       // moving stands you back up
+    if (p.holdWith) {
+      const b = players[p.holdWith];
+      if (!b || b.space !== p.space || Math.hypot(p.x - b.x, p.z - b.z) > 4.2) {
+        const other = p.holdWith; p.holdWith = null; if (b) b.holdWith = null;
+        io.to(spaceRoom(p)).emit('holdHandsState', { a: socket.id, b: other, holding: false });
+      }
+    }
     socket.to(spaceRoom(p)).emit('playerMoved', p);
   });
 
@@ -964,6 +1007,52 @@ io.on('connection', (socket) => {
   });
   socket.on('setNoKiss', (v) => { const p = players[socket.id]; if (p) p.noKiss = !!v; });
 
+  // --- Slap: a comedic tap, same safety shape as a kiss (range, cooldown, opt-out). ---
+  socket.on('slap', ({ targetId } = {}) => {
+    const p = players[socket.id], t = players[targetId];
+    if (!p || !t || targetId === socket.id || t.space !== p.space) return;
+    const now = Date.now();
+    if (p.lastSlap && now - p.lastSlap < 4000) { socket.emit('slapDenied', { reason: 'cooldown' }); return; }
+    if (Math.hypot(p.x - t.x, p.z - t.z) > 3.6) { socket.emit('slapDenied', { reason: 'range' }); return; }
+    if (t.noSlap) { socket.emit('slapDenied', { reason: 'blocked' }); return; }
+    p.lastSlap = now;
+    io.to(spaceRoom(p)).emit('slapFx', { fromId: socket.id, toId: targetId });
+    io.to(targetId).emit('slapReceived', { from: p.name, fromId: socket.id });
+  });
+  socket.on('setNoSlap', (v) => { const p = players[socket.id]; if (p) p.noSlap = !!v; });
+
+  // --- Holding hands: consent-based like a kiss, but it's a standing link that breaks on distance. ---
+  socket.on('holdHandsRequest', ({ targetId } = {}) => {
+    const p = players[socket.id], t = players[targetId];
+    if (!p || !t || targetId === socket.id || t.space !== p.space || p.holdWith || t.holdWith) return;
+    if (Math.hypot(p.x - t.x, p.z - t.z) > 3.6) { socket.emit('holdHandsDenied', { reason: 'range' }); return; }
+    io.to(targetId).emit('holdHandsPrompt', { fromId: socket.id, from: p.name });
+  });
+  socket.on('holdHandsRespond', ({ fromId, accept } = {}) => {
+    const p = players[socket.id], a = players[fromId];
+    if (!p || !a || p.holdWith || a.holdWith) return;
+    if (accept && a.space === p.space && Math.hypot(p.x - a.x, p.z - a.z) <= 5) {
+      p.holdWith = fromId; a.holdWith = socket.id;
+      io.to(spaceRoom(p)).emit('holdHandsState', { a: fromId, b: socket.id, holding: true });
+    } else {
+      io.to(fromId).emit('holdHandsDenied', { reason: 'declined' });
+    }
+  });
+  socket.on('holdHandsRelease', () => {
+    const p = players[socket.id]; if (!p || !p.holdWith) return;
+    const other = p.holdWith, b = players[other];
+    p.holdWith = null; if (b) b.holdWith = null;
+    io.to(spaceRoom(p)).emit('holdHandsState', { a: socket.id, b: other, holding: false });
+  });
+
+  // --- Sit on a bench: cosmetic pose; the client only sends this when it's actually near a bench. ---
+  socket.on('sitState', (d = {}) => {
+    const p = players[socket.id]; if (!p) return;
+    p.sitting = !!d.sitting;
+    if (p.sitting && Number.isFinite(d.x) && Number.isFinite(d.z)) { p.x = d.x; p.z = d.z; p.rotY = Number(d.rotY) || 0; }
+    io.to(spaceRoom(p)).emit('playerMoved', p);
+  });
+
   socket.on('chatMessage', (text) => {
     const p = players[socket.id];
     if (!p || !text) return;
@@ -991,6 +1080,7 @@ io.on('connection', (socket) => {
       io.emit('deliveryUpdated', deliveryJob);
     }
     for (const r of Object.keys(roles)) if (roles[r] === socket.id) roles[r] = null;
+    releaseHands(socket.id);
     const leftRoom = spaceRoom(p);
     delete players[socket.id]; delete publicPositions[socket.id];
     io.to(leftRoom).emit('playerLeft', socket.id);
