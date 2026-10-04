@@ -2014,20 +2014,6 @@ document.getElementById('hand-btn').onclick = doHoldHands;
 document.getElementById('hp-yes').onclick = () => { if (handPending) socket.emit('holdHandsRespond', { fromId: handPending, accept: true }); hideHandPrompt(); };
 document.getElementById('hp-no').onclick = () => { if (handPending) socket.emit('holdHandsRespond', { fromId: handPending, accept: false }); hideHandPrompt(); };
 function hideHandPrompt() { document.getElementById('hand-prompt').style.display = 'none'; handPending = null; }
-socket.on('holdHandsPrompt', ({ fromId, from }) => {
-  if (handWith) { socket.emit('holdHandsRespond', { fromId, accept: false }); return; }
-  handPending = fromId; document.getElementById('hp-text').textContent = '🤝 ' + from + ' wants to hold hands';
-  document.getElementById('hand-prompt').style.display = 'block';
-});
-socket.on('holdHandsDenied', ({ reason }) => showToast(reason === 'range' ? '🤝 Walk closer first' : reason === 'declined' ? '🤝 They said not now' : "🤝 Couldn't connect"));
-socket.on('holdHandsState', ({ a, b, holding }) => {
-  const mine = a === socket.id || b === socket.id;
-  const otherId = a === socket.id ? b : a;
-  if (mine) { handWith = holding ? otherId : null; document.getElementById('hand-btn').classList.toggle('selected', !!handWith); }
-  const key = pairKey(a, b);
-  if (!holding && handLinks[key]) { scene.remove(handLinks[key]); delete handLinks[key]; }
-  if (holding && !handLinks[key]) { const m = handLinkMesh(); scene.add(m); handLinks[key] = m; handLinks[key]._a = a; handLinks[key]._b = b; }
-});
 function updateHandLinks() {
   Object.values(handLinks).forEach(m => {
     const ga = avatarOf(m._a), gb = avatarOf(m._b); if (!ga || !gb) return;
@@ -2048,16 +2034,7 @@ function slapFx(fromId, toId) {
   tick();
   SND.aiyyo(earVol((a.position.x + b.position.x) / 2, (a.position.z + b.position.z) / 2, 30));
 }
-socket.on('slapFx', ({ fromId, toId }) => slapFx(fromId, toId));
-socket.on('slapReceived', ({ from }) => showToast('🖐️ ' + from + ' slapped you!'));
-socket.on('slapDenied', ({ reason }) => showToast(reason === 'range' ? '🖐️ Too far — walk closer first' : reason === 'blocked' ? "🖐️ They've turned off slaps" : '🖐️ Wait a moment before slapping again'));
 document.getElementById('slap-block') && (document.getElementById('slap-block').onclick = () => { socket.emit('setNoSlap', true); showToast('🚫 Slaps are off — others can no longer slap you'); });
-socket.on('privateForceMute', ({ muted }) => {
-  document.getElementById('forced-mute-note').style.display = muted ? 'block' : 'none';
-  if (muted) { privMuted = true; if (lkPriv) lkPriv.localParticipant.setMicrophoneEnabled(false).catch(() => {}); showToast('🔇 A moderator has muted your mic'); }
-  paintPrivBar();
-});
-socket.on('privateKicked', () => { cleanupPrivate(); showToast('🔒 A moderator removed you from the private room'); });
 
 function socialTick() {
   const gate = !inGame(), near = (!gate && !drivingCarId && !sitting) ? nearestOther() : null;
@@ -2899,6 +2876,30 @@ socket.on('kissReceived', ({ from, fromId }) => {
   clearTimeout(kissHide); kissHide = setTimeout(hideKissPrompt, 12000);
 });
 socket.on('kissDenied', ({ reason }) => showToast(reason === 'range' ? '💋 Too far — walk closer first' : reason === 'blocked' ? '🙅 They prefer no kisses' : reason === 'cooldown' ? '💋 Easy there, romeo — wait a few seconds' : 'Kiss failed'));
+
+socket.on('holdHandsPrompt', ({ fromId, from }) => {
+  if (handWith) { socket.emit('holdHandsRespond', { fromId, accept: false }); return; }
+  handPending = fromId; document.getElementById('hp-text').textContent = '🤝 ' + from + ' wants to hold hands';
+  document.getElementById('hand-prompt').style.display = 'block';
+});
+socket.on('holdHandsDenied', ({ reason }) => showToast(reason === 'range' ? '🤝 Walk closer first' : reason === 'declined' ? '🤝 They said not now' : "🤝 Couldn't connect"));
+socket.on('holdHandsState', ({ a, b, holding }) => {
+  const mine = a === socket.id || b === socket.id;
+  const otherId = a === socket.id ? b : a;
+  if (mine) { handWith = holding ? otherId : null; document.getElementById('hand-btn').classList.toggle('selected', !!handWith); }
+  const key = pairKey(a, b);
+  if (!holding && handLinks[key]) { scene.remove(handLinks[key]); delete handLinks[key]; }
+  if (holding && !handLinks[key]) { const m = handLinkMesh(); scene.add(m); handLinks[key] = m; handLinks[key]._a = a; handLinks[key]._b = b; }
+});
+socket.on('slapFx', ({ fromId, toId }) => slapFx(fromId, toId));
+socket.on('slapReceived', ({ from }) => showToast('🖐️ ' + from + ' slapped you!'));
+socket.on('slapDenied', ({ reason }) => showToast(reason === 'range' ? '🖐️ Too far — walk closer first' : reason === 'blocked' ? "🖐️ They've turned off slaps" : '🖐️ Wait a moment before slapping again'));
+socket.on('privateForceMute', ({ muted }) => {
+  document.getElementById('forced-mute-note').style.display = muted ? 'block' : 'none';
+  if (muted) { privMuted = true; if (lkPriv) lkPriv.localParticipant.setMicrophoneEnabled(false).catch(() => {}); showToast('🔇 A moderator has muted your mic'); }
+  paintPrivBar();
+});
+socket.on('privateKicked', () => { cleanupPrivate(); showToast('🔒 A moderator removed you from the private room'); });
 socket.on('roleState', (s) => {
   if (chayaNpc) chayaNpc.visible = !s.chayakkaran;
   if (milkmaid) milkmaid.visible = !s.karavakkari;
