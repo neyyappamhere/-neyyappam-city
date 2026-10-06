@@ -275,6 +275,10 @@
     #inventory-btn{ top:248px; left:auto; right:14px; }
     #job-banner{ top:64px; max-width:70vw; font-size:.72em; }
     #waypoint-readout{ top:100px; }
+    /* ==== HEALTH mobile tweaks ==== */
+    #health-pill { padding:6px 10px; font-size:.72em; }
+    #health-bar { width:60px; }
+    #ambulance-btn { top:56px; font-size:.78em; padding:9px 16px; }
   }
 
   /* ================= ACCOUNT / LOGIN POPUP ================= */
@@ -405,6 +409,95 @@
   .ac-terms a{ color:#FE019A; font-weight:600; text-decoration:none; }
   #vf-code{ text-align:center; font-size:28px !important; letter-spacing:.45em; font-weight:700; padding:14px 8px !important; }
   .ac-mail{ text-align:center; font-size:2.2em; margin-bottom:2px; }
+
+  /* ================= HEALTH / AMBULANCE / HOSPITAL ================= */
+  #health-pill {
+    pointer-events:auto; display:flex; align-items:center; gap:8px;
+    padding:7px 12px; border-radius:20px; font-size:.8em; font-weight:700;
+    background:var(--card); border:1px solid var(--border); box-shadow:0 6px 18px rgba(0,0,0,.4);
+  }
+  #health-pill i { color:#ff4d6d; }
+  #health-pill.critical { animation:hpPulse 0.8s infinite; }
+  @keyframes hpPulse { 50% { box-shadow:0 0 0 4px rgba(255,77,109,.35); } }
+  #health-bar { width:78px; height:8px; background:rgba(0,0,0,.45); border-radius:4px; overflow:hidden; }
+  #health-fill { height:100%; width:100%; background:linear-gradient(90deg,#00f593,#7ee787); transition:width .25s, background .25s; }
+  #health-val { min-width:28px; text-align:right; color:#fff; }
+
+  #ambulance-btn {
+    position:absolute; top:110px; left:50%; transform:translateX(-50%); z-index:7;
+    display:none; padding:11px 20px; border:none; border-radius:22px; font-weight:800; font-size:.88em;
+    color:#fff; background:linear-gradient(135deg,#d62828,#ff4d6d); cursor:pointer;
+    box-shadow:0 8px 24px rgba(214,40,40,.5); animation:ambPulse 1s infinite;
+  }
+  @keyframes ambPulse { 50% { transform:translateX(-50%) scale(1.06); } }
+
+  #hurt-flash {
+    position:absolute; inset:0; pointer-events:none; z-index:40;
+    background:radial-gradient(circle,transparent 40%,rgba(200,0,30,.55) 100%);
+    opacity:0; transition:opacity .15s;
+  }
+  #hurt-flash.on { opacity:1; }
+
+  #death-overlay {
+    position:absolute; inset:0; z-index:45; display:none; align-items:center; justify-content:center;
+    background:rgba(20,0,0,.75); backdrop-filter:blur(4px);
+  }
+  #death-overlay.open { display:flex; }
+  .death-card { text-align:center; color:#fff; font-family:'Syne',sans-serif; }
+  .death-skull { font-size:4.5em; animation:skullBounce 0.9s infinite alternate; }
+  @keyframes skullBounce { from{transform:translateY(-8px);} to{transform:translateY(8px);} }
+  .death-title { font-size:1.6em; font-weight:800; margin-top:8px; }
+  .death-sub { color:#ffb3b3; margin-top:6px; font-size:.95em; }
+
+  #hospital-overlay {
+    position:absolute; inset:0; z-index:46; display:none; align-items:center; justify-content:center;
+    background:
+      radial-gradient(circle at 20% 20%, rgba(120,200,220,.15), transparent 60%),
+      radial-gradient(circle at 80% 80%, rgba(200,220,255,.15), transparent 60%),
+      linear-gradient(180deg, #0d1b2a 0%, #071622 100%);
+  }
+  #hospital-overlay.open { display:flex; }
+  .hosp-room {
+    width:min(92vw, 460px); padding:26px 22px; border-radius:22px;
+    background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
+    border:1px solid rgba(255,255,255,.14); box-shadow:0 25px 60px rgba(0,0,0,.6);
+    text-align:center; color:#eaf3fb; position:relative; overflow:hidden;
+  }
+  .hosp-room::before {
+    content:""; position:absolute; inset:0;
+    background:repeating-linear-gradient(45deg, rgba(255,255,255,.03) 0 12px, transparent 12px 24px);
+    pointer-events:none;
+  }
+  .hosp-monitor {
+    width:110px; height:70px; margin:0 auto 12px; border-radius:10px;
+    background:linear-gradient(180deg,#03161a,#0a2b30); border:2px solid #1f4c55;
+    position:relative;
+  }
+  .hosp-monitor::after {
+    content:""; position:absolute; left:8px; right:8px; top:50%;
+    height:2px; background:#00f593; box-shadow:0 0 8px #00f593;
+    animation:ekg 1.4s linear infinite;
+  }
+  @keyframes ekg {
+    0%   { transform:translateY(0) scaleX(1);   opacity:.3; }
+    20%  { transform:translateY(-8px);          opacity:1; }
+    30%  { transform:translateY(6px);           opacity:1; }
+    45%  { transform:translateY(0) scaleX(.6);  opacity:1; }
+    100% { transform:translateY(0) scaleX(1);   opacity:.4; }
+  }
+  .hosp-title { font-family:'Syne',sans-serif; font-weight:800; font-size:1.25em; color:#7fe3ff; }
+  .hosp-sub { color:#a9c6d8; font-size:.86em; margin-top:4px; }
+  .hosp-count {
+    font-family:'Space Grotesk',monospace; font-size:3.4em; font-weight:800; margin:8px 0 4px;
+    background:linear-gradient(135deg,#7fe3ff,#ff80d5); -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+  }
+  .hosp-note { color:#9fb6c6; font-size:.82em; line-height:1.5; margin-top:6px; }
+  .hosp-note b { color:#ffd166; }
+  #hosp-discharge-early {
+    width:100%; margin-top:14px; padding:12px; border:none; border-radius:12px;
+    background:rgba(255,255,255,.08); color:#7d93a4; font-weight:700; font-size:.85em; cursor:not-allowed;
+    font-family:inherit;
+  }
 </style>
 </head>
 <body>
@@ -458,6 +551,11 @@
   </div>
   <div id="hud-right">
     <div id="status-pill"><span class="live-dot"></span> <span id="online-count">1</span> online</div>
+    <div id="health-pill" title="Health">
+      <i class="fa-solid fa-heart"></i>
+      <div id="health-bar"><div id="health-fill"></div></div>
+      <span id="health-val">100</span>
+    </div>
     <div id="account-pill"><span id="account-name">Guest</span><button id="account-action" type="button">Log in</button></div>
     <div id="balloon-pill"><i class="fa-solid fa-circle" style="border-radius:50%;"></i> 🎈 <span id="balloon-val">0</span></div>
   </div>
@@ -471,7 +569,35 @@
 <button id="inventory-btn"><i class="fa-solid fa-bag-shopping"></i> Bag</button>
 <button id="private-btn"><i class="fa-solid fa-lock"></i> Private</button>
 
+<button id="ambulance-btn"><i class="fa-solid fa-truck-medical"></i> Call Ambulance (25 🎈)</button>
+
 <div id="toast-stack"></div>
+
+<div id="death-overlay">
+  <div class="death-card">
+    <div class="death-skull">💀</div>
+    <div class="death-title">You were knocked out!</div>
+    <div class="death-sub">An ambulance is rushing to you…</div>
+  </div>
+</div>
+
+<div id="hospital-overlay">
+  <div class="hosp-room">
+    <div class="hosp-monitor"></div>
+    <div class="hosp-info">
+      <div class="hosp-title">🏥 Neyyappam General Hospital</div>
+      <div class="hosp-sub" id="hosp-sub">Doctors are treating you…</div>
+      <div class="hosp-count" id="hosp-count">25</div>
+      <div class="hosp-note">
+        You'll be discharged with <b>40% health</b>.<br>
+        Buy <b>💊 medicine</b> at the pharmacy to heal faster, or wait — health slowly recovers over 10 min.
+      </div>
+      <button id="hosp-discharge-early" disabled>Discharge in 25s…</button>
+    </div>
+  </div>
+</div>
+
+<div id="hurt-flash"></div>
 
 <div id="job-banner"></div>
 <div id="waypoint-readout" style="display:none;"></div>
@@ -494,6 +620,7 @@
     </div>
     <div class="stat-row"><span>Name</span><span id="stat-name">—</span></div>
     <div class="stat-row"><span>Look</span><span id="stat-look">—</span></div>
+    <div class="stat-row"><span>Health</span><span id="stat-health">100%</span></div>
     <div class="stat-row"><span>Balloons</span><span id="stat-balloons">0</span></div>
     <div class="stat-row"><span>Distance traveled</span><span id="stat-distance">0 m</span></div>
     <div class="stat-row"><span>Deliveries completed</span><span id="stat-deliveries">0</span></div>
@@ -1868,7 +1995,6 @@ let riverBoat = null, riverNet = null, riverNetHang = null;
   // 80s bicycle (Hercules)
   const bic = new THREE.Group(); bic.position.set(-3.2, 0, 5.8); bic.rotation.y = 0.5; H.add(bic);
   [-0.55, 0.55].forEach(x => { const w = new THREE.Mesh(new THREE.TorusGeometry(0.34, 0.02, 6, 20), kMat(0x222222)); w.position.set(x, 0.38, 0); bic.add(w); });
-  [[0, 0.62, 1.1, -0.55, 0.38], [0, 0.62, 1.1, 0.55, 0.38]].forEach(() => {});
   const fr = cy(bic, 0.015, 0.015, 1.1, 0x1c1c1c, 0, 0.62, 0, 6); fr.rotation.z = Math.PI / 2;
   const hb = cy(bic, 0.015, 0.015, 0.45, 0x1c1c1c, 0.55, 0.85, 0, 6); hb.rotation.x = Math.PI / 2;
   bx(bic, 0.22, 0.05, 0.1, 0x1c1c1c, -0.3, 0.82, 0);
@@ -2775,7 +2901,7 @@ function updateFight() {
     if (p.state === 'fight') {
       const dx = me.x - g.position.x, dz = me.z - g.position.z, d = Math.hypot(dx, dz) || 1; g.rotation.y = Math.atan2(dx, dz);
       if (d > 2.0) { g.position.x += dx / d * 2.6 * dt; g.position.z += dz / d * 2.6 * dt; g.userData.walkAmp = 0.7; }
-      else { g.userData.walkAmp = 0; if (now > p.nextAtk) { p.nextAtk = now + 1500 + Math.random() * 600; g.userData.emote = { type: 'punch', until: now + 350 }; if (Math.random() < 0.5) say(p, 'attack'); if (Math.random() < 0.4) showToast(_pick(['Ouch! 💥', 'Aah! 🤕', 'He hit you! 👊'])); } }
+      else { g.userData.walkAmp = 0; if (now > p.nextAtk) { p.nextAtk = now + 1500 + Math.random() * 600; g.userData.emote = { type: 'punch', until: now + 350 }; if (Math.random() < 0.5) say(p, 'attack'); if (Math.random() < 0.4) { showToast(_pick(['Ouch! 💥', 'Aah! 🤕', 'He hit you! 👊'])); applyDamage(12, 'punch'); } } }
       if (d > 16) { say(p, 'quit'); resumePath(p); }
     } else if (p.state === 'down' && now > p.downUntil) { say(p, 'quit'); resumePath(p); }
   });
@@ -3343,7 +3469,7 @@ socket.on('holdHandsState', ({ a, b, holding }) => {
   if (holding && !handLinks[key]) { const m = handLinkMesh(); scene.add(m); handLinks[key] = m; handLinks[key]._a = a; handLinks[key]._b = b; }
 });
 socket.on('slapFx', ({ fromId, toId }) => slapFx(fromId, toId));
-socket.on('slapReceived', ({ from }) => showToast('🖐️ ' + from + ' slapped you!'));
+socket.on('slapReceived', ({ from }) => { showToast('🖐️ ' + from + ' slapped you!'); applyDamage(8, 'slap'); });
 socket.on('slapDenied', ({ reason }) => showToast(reason === 'range' ? '🖐️ Too far — walk closer first' : reason === 'blocked' ? "🖐️ They've turned off slaps" : '🖐️ Wait a moment before slapping again'));
 socket.on('privateForceMute', ({ muted }) => {
   document.getElementById('forced-mute-note').style.display = muted ? 'block' : 'none';
@@ -3411,13 +3537,19 @@ let shopCatalog = [];
 let myInventory = {};
 const CATEGORY_LABELS = {
   weapon: '🔫 Guns & Weapons', flower: '🌹 Flowers', food: '🍔 Food', drink: '🥤 Drinks',
-  chayakkada: '🍵 Chaya & Palaharam', dairy: '🥛 Palu, Thairu & Nei', party: '🎉 Party', accessory: '🕶️ Accessories', clothing: '🧥 Clothing'
+  chayakkada: '🍵 Chaya & Palaharam', dairy: '🥛 Palu, Thairu & Nei', party: '🎉 Party', accessory: '🕶️ Accessories', clothing: '🧥 Clothing',
+  medical: '💊 Medicine & Drinks'
 };
 function itemLabel(itemId) {
   const item = shopCatalog.find(i => i.id === itemId);
   return item ? `${item.emoji} ${item.name}` : itemId;
 }
-socket.on('shopCatalog', (items) => { shopCatalog = items; renderShop(); });
+socket.on('shopCatalog', (items) => {
+  shopCatalog = items;
+  // Inject client-side medical items so they appear at the main Shop
+  MED_ITEMS.forEach(mi => { if (!shopCatalog.find(x => x.id === mi.id)) shopCatalog.push(mi); });
+  renderShop();
+});
 socket.on('purchaseOk', ({ itemId, balloons, inventory }) => {
   balloonEl.textContent = balloons;
   myInventory = inventory;
@@ -3476,7 +3608,12 @@ function renderShop() {
         <div class="price">🎈 ${item.price}</div>
         <button ${afford ? '' : 'disabled'}>${afford ? 'Buy' : 'Need more'}</button>
       `;
-      div.querySelector('button').onclick = () => socket.emit('buyItem', item.id);
+      div.querySelector('button').onclick = () => {
+        // Medical items heal locally instead of going to the server
+        const med = MED_ITEMS.find(m => m.id === item.id);
+        if (med) { buyMedical(med); return; }
+        socket.emit('buyItem', item.id);
+      };
       row.appendChild(div);
     });
     grid.appendChild(row);
@@ -4072,6 +4209,7 @@ document.getElementById('stats-btn').onclick = () => {
   paintSettings();
   document.getElementById('stat-name').textContent = myName + (auth.loggedIn ? '  🔒' : '');
   document.getElementById('stat-look').textContent = `${myGender}, ${myHairStyle} hair`;
+  document.getElementById('stat-health').textContent = Math.round(myHealth) + '%';
   document.getElementById('stat-balloons').textContent = balloonEl.textContent;
   document.getElementById('stat-distance').textContent = Math.round(stats.distanceTraveled) + ' m';
   document.getElementById('stat-deliveries').textContent = stats.deliveriesCompleted;
@@ -4084,6 +4222,212 @@ document.getElementById('shop-btn').onclick = openShop;
 document.getElementById('shop-close').onclick = () => { document.getElementById('shop-overlay').style.display = 'none'; };
 document.getElementById('inventory-btn').onclick = () => { renderInventory(); document.getElementById('inventory-overlay').style.display = 'flex'; };
 document.getElementById('inventory-close').onclick = () => { document.getElementById('inventory-overlay').style.display = 'none'; };
+
+/* =========================================================
+   HEALTH · DAMAGE · AMBULANCE · HOSPITAL · MEDICINE
+   ========================================================= */
+const HOSPITAL = { x: 30, z: -25 };
+const HOSPITAL_FEE = 25;
+const REGEN_SECONDS = 10 * 60;          // 0 → 100 slowly across 10 minutes if no medicine taken
+const HOSPITAL_STAY_MS = 25000;
+
+let myHealth = 100;
+let inHospital = false;
+let hospitalEndAt = 0, hospitalTimer = null;
+let ambulance = null;
+let invulnUntil = 0, lastDamageAt = -1e9, regenAcc = 0, boostUntil = 0;
+let _lastHealthAt = performance.now();
+
+const healthPill = document.getElementById('health-pill');
+const healthFill = document.getElementById('health-fill');
+const healthVal  = document.getElementById('health-val');
+const ambBtn     = document.getElementById('ambulance-btn');
+
+function paintHealth() {
+  const pct = Math.max(0, Math.min(100, myHealth));
+  healthFill.style.width = pct + '%';
+  healthVal.textContent  = Math.round(pct);
+  healthFill.style.background =
+    pct > 60 ? 'linear-gradient(90deg,#00f593,#7ee787)' :
+    pct > 30 ? 'linear-gradient(90deg,#ffcc00,#ffa500)' :
+               'linear-gradient(90deg,#ff4d6d,#d90034)';
+  healthPill.classList.toggle('critical', pct < 30 && pct > 0);
+  ambBtn.style.display = (pct < 30 && pct > 0 && !inHospital && !ambulance) ? 'block' : 'none';
+}
+function setHealth(v) {
+  const before = myHealth;
+  myHealth = Math.max(0, Math.min(100, v));
+  paintHealth();
+  if (myHealth <= 0 && before > 0 && !inHospital && !ambulance) callAmbulance(true);
+}
+function applyDamage(amount, reason) {
+  if (inHospital) return;
+  const now = performance.now();
+  if (now < invulnUntil) return;
+  lastDamageAt = now;
+  setHealth(myHealth - amount);
+  document.getElementById('hurt-flash').classList.add('on');
+  setTimeout(() => document.getElementById('hurt-flash').classList.remove('on'), 160);
+  if (amount >= 8) showToast('💔 -' + Math.round(amount) + ' HP');
+}
+ambBtn.onclick = () => callAmbulance(false);
+
+function makeAmbulance() {
+  const g = new THREE.Group();
+  const white = new THREE.MeshStandardMaterial({ color: 0xf4f4f4, roughness: 0.5 });
+  const red   = new THREE.MeshStandardMaterial({ color: 0xd62828, emissive: 0x400000 });
+  const dark  = new THREE.MeshStandardMaterial({ color: 0x1a1a1a });
+  const glass = new THREE.MeshStandardMaterial({ color: 0x1d2b38, roughness: 0.1 });
+  const add = (geo, m, x, y, z) => { const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); g.add(o); return o; };
+  add(new THREE.BoxGeometry(2.4, 0.75, 1.15), white, 0, 0.6, 0);
+  add(new THREE.BoxGeometry(2.2, 0.95, 1.1), white, 0, 1.4, 0);
+  add(new THREE.BoxGeometry(2.25, 0.2, 1.13), red, 0, 1.15, 0);
+  add(new THREE.BoxGeometry(0.55, 0.14, 0.14), red, -0.6, 1.65, 0.57);
+  add(new THREE.BoxGeometry(0.14, 0.55, 0.14), red, -0.6, 1.65, 0.57);
+  add(new THREE.BoxGeometry(0.55, 0.14, 0.14), red, -0.6, 1.65, -0.57);
+  add(new THREE.BoxGeometry(0.14, 0.55, 0.14), red, -0.6, 1.65, -0.57);
+  add(new THREE.BoxGeometry(2.1, 0.55, 0.95), glass, 0.2, 1.42, 0);
+  const sirenR = add(new THREE.BoxGeometry(0.22, 0.16, 0.22),
+    new THREE.MeshStandardMaterial({ color: 0xff0000, emissive: 0xff0000, emissiveIntensity: 1 }),
+    0.4, 1.95, 0);
+  const sirenB = add(new THREE.BoxGeometry(0.22, 0.16, 0.22),
+    new THREE.MeshStandardMaterial({ color: 0x0066ff, emissive: 0x0066ff, emissiveIntensity: 0.2 }),
+    -0.4, 1.95, 0);
+  const wheelG = new THREE.CylinderGeometry(0.3, 0.3, 0.2, 12);
+  [[-0.8,-0.62],[-0.8,0.62],[0.8,-0.62],[0.8,0.62]].forEach(([x,z]) => {
+    const w = new THREE.Mesh(wheelG, dark); w.rotation.z = Math.PI/2; w.position.set(x, 0.3, z); g.add(w);
+  });
+  g.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  g.userData = { sirenR, sirenB };
+  return g;
+}
+function sirenBeep(freqHi) {
+  if (!soundOn || !actx || actx.state !== 'running') return;
+  const t = actx.currentTime, o = actx.createOscillator(), gn = actx.createGain();
+  o.type = 'sine';
+  o.frequency.setValueAtTime(freqHi ? 1100 : 750, t);
+  o.frequency.linearRampToValueAtTime(freqHi ? 750 : 1100, t + 0.4);
+  gn.gain.setValueAtTime(0.0001, t);
+  gn.gain.linearRampToValueAtTime(0.14, t + 0.05);
+  gn.gain.linearRampToValueAtTime(0.0001, t + 0.5);
+  o.connect(gn); gn.connect(master); o.start(t); o.stop(t + 0.55);
+}
+let _sirenFlip = false;
+function callAmbulance(free) {
+  if (ambulance || inHospital) return;
+  if (!free) {
+    const bal = parseInt(balloonEl.textContent, 10) || 0;
+    if (bal < HOSPITAL_FEE) { showToast(`🚑 Need ${HOSPITAL_FEE} 🎈 to call an ambulance`); return; }
+    balloonEl.textContent = bal - HOSPITAL_FEE;
+  }
+  showToast(free ? '🚑 You collapsed — ambulance rushing!' : '🚑 Ambulance on the way!');
+  const g = makeAmbulance();
+  const a = Math.random() * Math.PI * 2;
+  g.position.set(myAvatar.position.x + Math.cos(a) * 55, 0, myAvatar.position.z + Math.sin(a) * 55);
+  scene.add(g);
+  ambulance = { group: g, sirenAt: 0 };
+}
+function updateAmbulance(dt) {
+  if (!ambulance) return;
+  const g = ambulance.group, p = myAvatar.position;
+  const dx = p.x - g.position.x, dz = p.z - g.position.z, d = Math.hypot(dx, dz);
+  g.userData.sirenR.material.emissiveIntensity = 0.4 + 0.9 * Math.abs(Math.sin(performance.now() / 180));
+  g.userData.sirenB.material.emissiveIntensity = 0.4 + 0.9 * Math.abs(Math.cos(performance.now() / 180));
+  const now = performance.now();
+  if (now > ambulance.sirenAt && soundOn) { ambulance.sirenAt = now + 550; _sirenFlip = !_sirenFlip; sirenBeep(_sirenFlip); }
+  if (d > 3) {
+    const sp = Math.min(9 * dt, d);
+    g.position.x += dx / d * sp; g.position.z += dz / d * sp;
+    g.rotation.y = Math.atan2(dx, dz);
+  } else {
+    scene.remove(g); ambulance = null;
+    if (soundOn) { sirenBeep(true); setTimeout(() => sirenBeep(false), 300); }
+    enterHospital();
+  }
+}
+
+function enterHospital() {
+  inHospital = true;
+  if (drivingCarId) exitVehicle();
+  myAvatar.visible = false;
+  document.getElementById('death-overlay').classList.remove('open');
+  document.getElementById('hospital-overlay').classList.add('open');
+  document.getElementById('hosp-sub').textContent = 'Doctors are treating you…';
+  hospitalEndAt = performance.now() + HOSPITAL_STAY_MS;
+  const counter = document.getElementById('hosp-count');
+  const btn = document.getElementById('hosp-discharge-early');
+  clearInterval(hospitalTimer);
+  hospitalTimer = setInterval(() => {
+    const left = Math.max(0, Math.ceil((hospitalEndAt - performance.now()) / 1000));
+    counter.textContent = left;
+    btn.textContent = left > 0 ? `Discharge in ${left}s…` : 'Discharged!';
+    if (left <= 0) { clearInterval(hospitalTimer); leaveHospital(); }
+  }, 250);
+}
+function leaveHospital() {
+  inHospital = false;
+  document.getElementById('hospital-overlay').classList.remove('open');
+  myHealth = 40;                       // ← you come back with 40%
+  paintHealth();
+  myAvatar.visible = true;
+  myAvatar.position.set(HOSPITAL.x + 3, 0, HOSPITAL.z + 8);
+  invulnUntil = performance.now() + 8000;
+  showToast('🏥 Discharged at 40% — buy 💊 medicine or wait to recover');
+}
+
+/* Slow regen (~10 min baseline; 5× faster with medicine) */
+function healthTick() {
+  const now = performance.now();
+  const dt  = Math.min(0.1, (now - _lastHealthAt) / 1000);
+  _lastHealthAt = now;
+  if (inHospital || myHealth >= 100) return;
+  if (now - lastDamageAt < 6000) return;                 // pause 6s after damage
+  const boost = now < boostUntil ? 5 : 1;
+  regenAcc += dt * (100 / REGEN_SECONDS) * boost;
+  if (regenAcc >= 0.5) { const add = Math.floor(regenAcc); regenAcc -= add; setHealth(myHealth + add); }
+}
+
+/* Vehicle collisions */
+function checkVehicleHits() {
+  if (inHospital || drivingCarId) return;
+  const now = performance.now();
+  if (now < invulnUntil) return;
+  for (const id in cars) {
+    const c = cars[id];
+    if (!c.occupiedBy || c.occupiedBy === socket.id) continue;
+    const g = c.group;
+    const sp = Math.hypot(g.position.x - (c._lx === undefined ? g.position.x : c._lx), g.position.z - (c._lz === undefined ? g.position.z : c._lz));
+    c._lx = g.position.x; c._lz = g.position.z;
+    if (sp < 0.05) continue;
+    const d = Math.hypot(g.position.x - myAvatar.position.x, g.position.z - myAvatar.position.z);
+    if (d < 1.8) {
+      const dmg = Math.min(45, 15 + sp * 110);
+      applyDamage(dmg, 'vehicle');
+      invulnUntil = now + 1200;
+      const dx = myAvatar.position.x - g.position.x, dz = myAvatar.position.z - g.position.z, dd = Math.hypot(dx, dz) || 1;
+      myAvatar.position.x += dx / dd * 2; myAvatar.position.z += dz / dd * 2;
+    }
+  }
+}
+
+/* Medical items (client-side purchase & healing) */
+const MED_ITEMS = [
+  { id: 'bandage',      name: 'Bandage',       emoji: '🩹', price:  5, category: 'medical', shop: 'main', heal: 25, boost: 15000 },
+  { id: 'painkiller',   name: 'Painkiller',    emoji: '💊', price: 10, category: 'medical', shop: 'main', heal: 45, boost: 25000 },
+  { id: 'energy_drink', name: 'Energy Drink',  emoji: '🥤', price: 15, category: 'medical', shop: 'main', heal: 70, boost: 40000 },
+  { id: 'med_kit',      name: 'Medical Kit',   emoji: '🧰', price: 30, category: 'medical', shop: 'main', heal: 100, boost: 60000 },
+];
+function buyMedical(mi) {
+  const bal = parseInt(balloonEl.textContent, 10) || 0;
+  if (bal < mi.price) { showToast('Not enough balloons 🎈'); return; }
+  balloonEl.textContent = bal - mi.price;
+  setHealth(myHealth + mi.heal);
+  boostUntil = performance.now() + mi.boost;
+  showToast(`${mi.emoji} Used ${mi.name} — +${mi.heal} HP · recovery boosted`);
+  refreshAffordability();
+}
+
+paintHealth();
 
 /* =========================================================
    9) RENDER LOOP
@@ -4104,6 +4448,13 @@ function animate() {
   waterTex.offset.y = t * 0.05;
   Object.values(cars).forEach(c => { if (c.prop && c.occupiedBy && c.occupiedBy !== socket.id) c.prop.rotation.x += 0.6; });
   updateMovement();
+
+  // HEALTH · AMBULANCE · DAMAGE
+  healthTick();
+  checkVehicleHits();
+  updateAmbulance(0.016);
+  if (myHealth <= 0 && !inHospital && !ambulance) document.getElementById('death-overlay').classList.add('open');
+
   keralaTick(t);
   const nowp = performance.now();
   tickAvatar(myAvatar, nowp); if (chayaNpc) tickAvatar(chayaNpc, nowp); if (milkmaid) tickAvatar(milkmaid, nowp); updatePeds(); updateSky(); updateFight(); PEDS.forEach(p => tickAvatar(p.g, nowp));
