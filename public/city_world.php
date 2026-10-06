@@ -1141,7 +1141,12 @@ function skySample(t) {
   const col = p => new THREE.Color(a[p]).lerp(new THREE.Color(b[p]), k);
   return { top: col('top'), mid: col('mid'), hor: col('hor'), fog: col('fog'), sun: col('sun'), si: a.si + (b.si - a.si) * k, hi: a.hi + (b.hi - a.hi) * k };
 }
-function cityClock() { return _aq.has('time') ? (((+_aq.get('time')) % 1) + 1) % 1 : (Date.now() % ATMO.dayMs) / ATMO.dayMs; }
+function cityClock() {
+  if (_aq.has('time')) return (((+_aq.get('time')) % 1) + 1) % 1;
+  // ~85% of each cycle is daytime (with sunrise/sunset), ~15% is night
+  const u = (Date.now() % ATMO.dayMs) / ATMO.dayMs;
+  return u < 0.85 ? 0.23 + (u / 0.85) * 0.60 : (0.83 + ((u - 0.85) / 0.15) * 0.40) % 1;
+}
 function rainTarget() {
   if (_aq.has('rain')) return +_aq.get('rain') ? 1 : 0;
   const r = Math.sin(Math.floor(Date.now() / ATMO.rainBlockMs) * 12.9898) * 43758.5453;
@@ -2512,7 +2517,32 @@ const _geo = {};
 const G = (key, make) => _geo[key] || (_geo[key] = make());
 const shoeMatShared = new THREE.MeshStandardMaterial({ color: 0x1b1512, roughness: 0.6 });
 
-function makeAvatarMesh(gender, outfitColor, hairStyle, role) {
+/* ---- Phase 2: realistic skin + 80s Vice City shirts (cached canvas textures) ---- */
+const _skinTx = {}, _shirtTx = {};
+function skinTex(hex) {
+  if (_skinTx[hex]) return _skinTx[hex];
+  const c = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d');
+  const base = new THREE.Color(hex), css = '#' + base.getHexString();
+  x.fillStyle = css; x.fillRect(0, 0, 128, 128);
+  const gr = x.createLinearGradient(0, 0, 0, 128); gr.addColorStop(0, 'rgba(255,200,170,0.10)'); gr.addColorStop(0.5, 'rgba(0,0,0,0)'); gr.addColorStop(1, 'rgba(60,20,10,0.12)');
+  x.fillStyle = gr; x.fillRect(0, 0, 128, 128);
+  for (let i = 0; i < 900; i++) { x.fillStyle = Math.random() < 0.6 ? 'rgba(90,50,30,' + (0.03 + Math.random() * 0.07) + ')' : 'rgba(255,230,210,' + (0.03 + Math.random() * 0.06) + ')'; x.fillRect(Math.random() * 128, Math.random() * 128, 1 + Math.random() * 1.5, 1 + Math.random() * 1.5); }
+  for (let i = 0; i < 14; i++) { x.fillStyle = 'rgba(110,60,30,0.16)'; x.beginPath(); x.arc(Math.random() * 128, Math.random() * 128, 0.8 + Math.random(), 0, 7); x.fill(); }
+  return (_skinTx[hex] = new THREE.CanvasTexture(c));
+}
+function shirtTex(color, type) {
+  const key = color + type; if (_shirtTx[key]) return _shirtTx[key];
+  const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d');
+  x.fillStyle = typeof color === 'number' ? '#' + color.toString(16).padStart(6, '0') : color; x.fillRect(0, 0, 64, 64);
+  x.strokeStyle = 'rgba(255,255,255,0.28)'; x.lineWidth = 3; for (let i = -64; i < 128; i += 14) { x.beginPath(); x.moveTo(i, 0); x.lineTo(i + 64, 64); x.stroke(); }
+  x.fillStyle = 'rgba(255,255,255,0.45)'; [[12, 14], [44, 36], [26, 54], [56, 8]].forEach(p => { for (let k = 0; k < 5; k++) { x.beginPath(); x.ellipse(p[0] + Math.cos(k * 1.26) * 4, p[1] + Math.sin(k * 1.26) * 4, 3, 1.6, k * 1.26, 0, 7); x.fill(); } });
+  x.fillStyle = 'rgba(0,0,0,0.10)'; for (let i = 0; i < 160; i++) x.fillRect(Math.random() * 64, Math.random() * 64, 1, 1);
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(3, 2);
+  return (_shirtTx[key] = t);
+}
+
+function makeAvatarMesh(gender, outfitColor, hairStyle, role, look) {
+  look = look || {};
   const isF = gender === 'female' || role === 'karavakkari';
   const mature = role === 'karavakkari';
   const color = outfitColor ? parseInt(String(outfitColor).replace('#', ''), 16) : (genderColors[gender] || genderColors.other);
@@ -2520,8 +2550,8 @@ function makeAvatarMesh(gender, outfitColor, hairStyle, role) {
   const group = new THREE.Group(), body = new THREE.Group(); group.add(body);
   const skinHex = role === 'karavakkari' ? 0xc68a5d : role === 'chayakkaran' ? 0xae7a50 : 0xefc6a2;
   const M = (c, o) => new THREE.MeshStandardMaterial(Object.assign({ color: c, roughness: 0.75 }, o || {}));
-  const skin = M(skinHex, { roughness: 0.5 });
-  const hairHex = mature ? 0x120c0a : 0x1d1411, hairMat = M(hairHex, { roughness: 0.4 });
+  const skin = M(0xffffff, { roughness: 0.55, map: skinTex(look.skin || skinHex) });
+  const hairHex = look.hair || (mature ? 0x120c0a : 0x1d1411), hairMat = M(hairHex, { roughness: 0.4 });
   const gold = M(0xf2b632, { metalness: 0.55, roughness: 0.35 });
   const add = (parent, geo, mat, x, y, z) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); parent.add(m); return m; };
   const sph = (r, ws = 14, hs = 10) => G('s' + [r, ws, hs].join(), () => new THREE.SphereGeometry(r, ws, hs));
@@ -2533,11 +2563,12 @@ function makeAvatarMesh(gender, outfitColor, hairStyle, role) {
     ? (mature ? [[0.001,0.84],[0.158,0.86],[0.195,0.94],[0.165,1.02],[0.122,1.12],[0.14,1.22],[0.158,1.30],[0.145,1.38],[0.12,1.45],[0.05,1.49],[0.001,1.5]]
               : [[0.001,0.84],[0.15,0.86],[0.18,0.94],[0.15,1.02],[0.115,1.12],[0.13,1.22],[0.148,1.30],[0.14,1.38],[0.12,1.45],[0.05,1.49],[0.001,1.5]])
     : [[0.001,0.86],[0.16,0.88],[0.172,0.98],[0.158,1.12],[0.178,1.28],[0.19,1.40],[0.15,1.47],[0.06,1.51],[0.001,1.52]];
-  const torsoMat = role === 'chayakkaran' ? M(0xf4f1e8) : role === 'karavakkari' ? M(0xa61e24, { roughness: 0.6 }) : M(color);
+  const torsoMat = role === 'chayakkaran' ? M(0xf4f1e8) : role === 'karavakkari' ? M(0xa61e24, { roughness: 0.6 }) : M(0xffffff, { roughness: 0.8, map: shirtTex(color, 'vice') });
   const torso = add(body, G('torso' + isF + mature, () => new THREE.LatheGeometry(prof.map(p => new THREE.Vector2(p[0], p[1])), 22)), torsoMat, 0, 0, 0);
   torso.scale.z = 0.7;
   [-1, 1].forEach(s => add(body, sph(0.058, 10, 8), torsoMat, s * sh, shY - 0.035, 0));
   add(body, cyl(0.048, 0.054, 0.11, 12), skin, 0, 1.535, 0);
+  if (!role) [-1, 1].forEach(s => { const c = add(body, new THREE.BoxGeometry(0.075, 0.012, 0.055), torsoMat, s * 0.045, 1.5, 0.095); c.rotation.set(0.55, 0, s * 0.55); });
 
   const head = new THREE.Group(); head.position.set(0, headY, 0); body.add(head);
   add(head, sph(0.105, 22, 16), skin, 0, 0, 0).scale.set(0.9, 1.1, 0.97);
@@ -2551,6 +2582,7 @@ function makeAvatarMesh(gender, outfitColor, hairStyle, role) {
     add(head, new THREE.BoxGeometry(0.034, 0.0065, 0.008), hairMat, s * 0.04, 0.047, 0.0835).rotation.z = -s * 0.12;
     if (isF) add(head, new THREE.BoxGeometry(0.03, 0.003, 0.006), M(0x0d0806), s * 0.04, 0.034, 0.09);
   });
+  if (look.shades) { const sm = M(0x0b0b10, { roughness: 0.1, metalness: 0.6 }); [-1, 1].forEach(s => add(head, new THREE.BoxGeometry(0.052, 0.034, 0.008), sm, s * 0.043, 0.022, 0.1)); add(head, new THREE.BoxGeometry(0.03, 0.006, 0.008), sm, 0, 0.032, 0.1); }
   add(head, sph(0.016, 8, 8), skin, 0, -0.012, 0.098).scale.set(0.9, 1.1, 1.2);
   const lipMat = M(role === 'karavakkari' ? 0xa8323f : isF ? 0xc9686a : 0xb87a68, { roughness: 0.4 });
   add(head, sph(0.0165, 8, 6), lipMat, 0, -0.049, 0.089).scale.set(1.4, 0.42, 0.55);
@@ -2576,7 +2608,7 @@ function makeAvatarMesh(gender, outfitColor, hairStyle, role) {
     const b = add(head, new THREE.TorusGeometry(0.108, 0.012, 8, 22), M(0xffd700), 0, 0.06, 0); b.rotation.x = Math.PI / 2; b.scale.set(0.94, 1, 1.0);
   }
 
-  const arms = [], sleeveMat = torsoMat;
+  const arms = [], elbows = [], knees = [], sleeveMat = torsoMat;
   [-1, 1].forEach(s => {
     const pv = new THREE.Group(); pv.position.set(s * sh, shY - 0.03, 0); pv.rotation.z = s * 0.07; body.add(pv);
     add(pv, cyl(0.04, 0.033, 0.29, 10), skin, 0, -0.145, 0);
@@ -2587,10 +2619,10 @@ function makeAvatarMesh(gender, outfitColor, hairStyle, role) {
     add(fa, cyl(0.008, 0.007, 0.05, 5), skin, -s * 0.026, -0.27, 0.014).rotation.z = s * 0.6;
     add(pv, cyl(0.05, 0.046, 0.17, 10), sleeveMat, 0, -0.085, 0);
     if (mature) [0, 1].forEach(k => { add(fa, new THREE.TorusGeometry(0.03, 0.006, 6, 12), gold, 0, -0.232 - k * 0.018, 0).rotation.x = Math.PI / 2; });
-    arms.push(pv);
+    arms.push(pv); elbows.push(fa);
   });
 
-  const legs = [], legMat = (isF || role === 'chayakkaran') ? skin : M(0x2e2e38);
+  const legs = [], legMat = (isF || role === 'chayakkaran') ? skin : M(look.pants !== undefined ? look.pants : 0x2e2e38);
   const footMat = role === 'chayakkaran' ? M(0x6b4a2a) : shoeMatShared;
   [-1, 1].forEach(s => {
     const pv = new THREE.Group(); pv.position.set(s * hipX, hipY, 0); body.add(pv);
@@ -2599,7 +2631,7 @@ function makeAvatarMesh(gender, outfitColor, hairStyle, role) {
     const sk = new THREE.Group(); sk.position.set(0, -0.44, 0); pv.add(sk);
     add(sk, cyl(0.056, 0.036, 0.42, 10), legMat, 0, -0.21, 0);
     add(sk, new THREE.BoxGeometry(0.075, 0.055, 0.21), footMat, 0, -0.435, 0.045);
-    legs.push(pv);
+    legs.push(pv); knees.push(sk);
   });
 
   if (role === 'chayakkaran') {
@@ -2619,7 +2651,8 @@ function makeAvatarMesh(gender, outfitColor, hairStyle, role) {
   } else if (isF) {
     add(body, cyl(0.17, 0.27, 0.46, 18), M(color), 0, 0.7, 0);
   }
-  group.userData = { legs, arms, body, head, emote: null };
+  if (look.h) group.scale.setScalar(look.h); if (look.w) body.scale.x *= look.w;
+  group.userData = { legs, arms, elbows, knees, body, head, emote: null };
   group.traverse(o => { if (o.isMesh) o.castShadow = true; });
   return group;
 }
@@ -2627,8 +2660,9 @@ function makeAvatarMesh(gender, outfitColor, hairStyle, role) {
 function tickAvatar(g, now) {
   const u = g && g.userData; if (!u || !u.legs) return;
   const p = g.position, sp = u.lx === undefined ? 0 : Math.hypot(p.x - u.lx, p.z - u.lz);
-  u.lx = p.x; u.lz = p.z; u.sp = (u.sp || 0) * 0.75 + sp * 0.25; u.ph = (u.ph || 0) + sp * 9;
-  const amp = Math.min(0.75, u.sp * 6), la = Math.sin(u.ph) * amp, T = now / 1000;
+  u.lx = p.x; u.lz = p.z; u.sp = (u.sp || 0) * 0.75 + sp * 0.25; u.ph = (u.ph || 0) + (u.walkAmp === undefined ? sp * 9 : 0);
+  if (u.walkAmp !== undefined) { u.ph += Math.min(0.1, (now - (u.pn || now)) / 1000) * 7; u.pn = now; }
+  const amp = u.walkAmp !== undefined ? u.walkAmp : Math.min(0.75, u.sp * 6), la = Math.sin(u.ph) * amp, T = now / 1000;
   let a0x = -la * 0.85, a1x = la * 0.85, a0z = -0.07, a1z = 0.07, bob = Math.abs(Math.sin(u.ph)) * 0.02 * amp * 4 + Math.sin(T * 2) * 0.003;
   let rx = 0, rz = 0, l0 = la, l1 = -la;
   const e = u.emote && now < u.emote.until ? u.emote : null;
@@ -2642,6 +2676,8 @@ function tickAvatar(g, now) {
   u.legs[0].rotation.x = l0; u.legs[1].rotation.x = l1;
   u.arms[0].rotation.x = a0x; u.arms[1].rotation.x = a1x; u.arms[0].rotation.z = a0z; u.arms[1].rotation.z = a1z;
   u.body.position.y = bob; u.body.rotation.x = rx; u.body.rotation.z = rz;
+  u.knees[0].rotation.x = Math.max(0, -Math.cos(u.ph)) * amp * 1.1; u.knees[1].rotation.x = Math.max(0, Math.cos(u.ph)) * amp * 1.1;
+  u.elbows.forEach(f => f.rotation.x = -0.22 - (e ? 0 : amp * 0.6)); u.body.rotation.y = e ? 0 : Math.sin(u.ph) * amp * 0.14;
 }
 
 function makeLabel(text, sub) {
@@ -2694,6 +2730,35 @@ function milkProps(g) {
 }
 let myAvatar = makeAvatarMesh(myGender, myOutfitColor, myHairStyle);
 scene.add(myAvatar);
+/* ---- Phase 2: walking pedestrians on the sidewalks (tune PED_COUNT) ---- */
+const PEDS = []; let _pedAt = performance.now();
+(function spawnPeds() {
+  const coarse = typeof matchMedia !== 'undefined' && matchMedia('(pointer:coarse)').matches, PED_COUNT = coarse ? 8 : 14, half = GRID * BLOCK / 2;
+  const skins = [0xf1c9a5, 0xe0ac82, 0xc68a5d, 0xae7a50, 0x8d5a3b, 0x6b4429], shirts = ['#ff6fb5', '#2ec4b6', '#ffd166', '#ff8a5b', '#f8f4e3', '#7bdff2', '#b388eb'];
+  const pants = [0xf1ece0, 0xd9c9a3, 0x3d5a80, 0x2e2e38, 0xe8dcc8], hairs = ['short', 'pony', 'bandana'], R = a => a[Math.floor(Math.random() * a.length)];
+  for (let i = 0; i < PED_COUNT; i++) {
+    const g = makeAvatarMesh(Math.random() < 0.5 ? 'female' : 'male', R(shirts), R(hairs), null, { skin: R(skins), pants: R(pants), shades: Math.random() < 0.4, h: 0.95 + Math.random() * 0.1, w: 0.92 + Math.random() * 0.2 });
+    g.userData.walkAmp = 0.5; scene.add(g);
+    PEDS.push({ g, axis: Math.random() < 0.5 ? 0 : 1, line: Math.floor(Math.random() * (GRID + 1)) - GRID / 2, side: (Math.random() < 0.5 ? -1 : 1) * (ROAD_W / 2 + 1.3), dir: Math.random() < 0.5 ? -1 : 1, pos: (Math.random() * 2 - 1) * half, speed: 1.1 + Math.random() * 0.7, cool: 0 });
+  }
+})();
+function updatePeds() {
+  const now = performance.now(), dt = Math.min(0.1, (now - _pedAt) / 1000); _pedAt = now; const half = GRID * BLOCK / 2;
+  PEDS.forEach(p => {
+    p.g.visible = !privScene; if (privScene) return;
+    const prev = p.pos; p.pos += p.dir * p.speed * dt; p.cool -= dt;
+    if (Math.abs(p.pos) > half + 3) { p.dir *= -1; p.pos = Math.sign(p.pos) * (half + 3); }
+    const k0 = Math.floor(prev / BLOCK), k1 = Math.floor(p.pos / BLOCK);
+    if (k0 !== k1 && p.cool <= 0 && Math.random() < 0.35) {
+      const k = p.dir > 0 ? k1 : k0;
+      if (Math.abs(k) <= GRID / 2) { const old = p.line; p.axis ^= 1; p.line = k; p.pos = old * BLOCK; p.dir = Math.random() < 0.5 ? -1 : 1; p.side = (Math.random() < 0.5 ? -1 : 1) * (ROAD_W / 2 + 1.3); p.cool = 2; }
+    }
+    const a = p.line * BLOCK + p.side;
+    p.g.position.set(p.axis === 0 ? p.pos : a, 0, p.axis === 0 ? a : p.pos);
+    p.g.rotation.y = Math.atan2(p.axis === 0 ? p.dir : 0, p.axis === 0 ? 0 : p.dir);
+  });
+}
+
 const others = {};
 
 /* =========================================================
@@ -3933,7 +3998,7 @@ function animate() {
   updateMovement();
   keralaTick(t);
   const nowp = performance.now();
-  tickAvatar(myAvatar, nowp); if (chayaNpc) tickAvatar(chayaNpc, nowp); if (milkmaid) tickAvatar(milkmaid, nowp);
+  tickAvatar(myAvatar, nowp); if (chayaNpc) tickAvatar(chayaNpc, nowp); if (milkmaid) tickAvatar(milkmaid, nowp); updatePeds(); PEDS.forEach(p => tickAvatar(p.g, nowp));
   updateAtmosphere();
   updateWaypointReadout();
   if (waypointBeacon.visible) waypointBeacon.position.y = 1.2 + Math.sin(t*3)*0.15;
