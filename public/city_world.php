@@ -1105,7 +1105,7 @@ function makeSky() {
   );
   scene.add(sky);
 }
-makeSky();
+// sky is built in the Atmosphere block below
 
 scene.add(new THREE.HemisphereLight(0xffffff, 0x8f8464, 1.15));
 const sun = new THREE.DirectionalLight(0xfff3d6, 1.0);
@@ -1115,6 +1115,116 @@ sun.castShadow = true;
   sun.shadow.mapSize.set(big ? 2048 : 1024, big ? 2048 : 1024); sc.left = -32; sc.right = 32; sc.top = 32; sc.bottom = -32; sc.near = 1; sc.far = 110;
   sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.02; }
 scene.add(sun); scene.add(sun.target);
+
+/* =========================================================
+   PHASE 1 — Atmosphere: shared day/night cycle, sunrise/sunset, stars,
+   rain + wet roads, reflections (PMREM sky), ACES filmic tone mapping.
+   Everyone sees the same time/weather (derived from the wall clock).
+   Tweak ATMO below. Test with ?time=0.5 (noon) ?time=0.8 (dusk) ?time=0 (night) ?rain=1
+   ========================================================= */
+const ATMO = { dayMs: 20 * 60 * 1000, exposure: 1.2, rainBlockMs: 5 * 60 * 1000, rainChance: 0.3, envEveryMs: 12000 };
+const _aq = new URLSearchParams(location.search);
+const SKY_KEYS = [
+  { t: 0,    top: '#02030a', mid: '#0a1024', hor: '#1a1b33', fog: '#0b0e1c', sun: '#8fa4d8', si: 0.12, hi: 0.30 },
+  { t: 0.23, top: '#16224a', mid: '#6a4f78', hor: '#ff9a6a', fog: '#7a6070', sun: '#ffa070', si: 0.25, hi: 0.45 },
+  { t: 0.28, top: '#2a78c8', mid: '#a8d0e4', hor: '#ffd9a0', fog: '#e8d2b0', sun: '#ffcf94', si: 0.80, hi: 0.85 },
+  { t: 0.36, top: '#1f7fd1', mid: '#9bd8ea', hor: '#f4e6b8', fog: '#dcebd4', sun: '#fff3d6', si: 1.15, hi: 1.00 },
+  { t: 0.64, top: '#1f7fd1', mid: '#9bd8ea', hor: '#f4e6b8', fog: '#dcebd4', sun: '#fff3d6', si: 1.15, hi: 1.00 },
+  { t: 0.72, top: '#2a78c8', mid: '#b0d0dc', hor: '#ffcf8a', fog: '#ecd0a0', sun: '#ffc27a', si: 0.85, hi: 0.85 },
+  { t: 0.77, top: '#3a2a6a', mid: '#c4607a', hor: '#ff7a3a', fog: '#b8705e', sun: '#ff8a45', si: 0.35, hi: 0.50 },
+  { t: 0.83, top: '#070b22', mid: '#1c2146', hor: '#4a3050', fog: '#1c1a30', sun: '#8fa4d8', si: 0.14, hi: 0.32 },
+  { t: 1,    top: '#02030a', mid: '#0a1024', hor: '#1a1b33', fog: '#0b0e1c', sun: '#8fa4d8', si: 0.12, hi: 0.30 }
+];
+function skySample(t) {
+  let i = 0; while (i < SKY_KEYS.length - 2 && t >= SKY_KEYS[i + 1].t) i++;
+  const a = SKY_KEYS[i], b = SKY_KEYS[i + 1], k = Math.min(1, Math.max(0, (t - a.t) / (b.t - a.t)));
+  const col = p => new THREE.Color(a[p]).lerp(new THREE.Color(b[p]), k);
+  return { top: col('top'), mid: col('mid'), hor: col('hor'), fog: col('fog'), sun: col('sun'), si: a.si + (b.si - a.si) * k, hi: a.hi + (b.hi - a.hi) * k };
+}
+function cityClock() { return _aq.has('time') ? (((+_aq.get('time')) % 1) + 1) % 1 : (Date.now() % ATMO.dayMs) / ATMO.dayMs; }
+function rainTarget() {
+  if (_aq.has('rain')) return +_aq.get('rain') ? 1 : 0;
+  const r = Math.sin(Math.floor(Date.now() / ATMO.rainBlockMs) * 12.9898) * 43758.5453;
+  return (r - Math.floor(r)) < ATMO.rainChance ? 1 : 0;
+}
+renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = ATMO.exposure;
+
+const skyCanvas = document.createElement('canvas'); skyCanvas.width = 2; skyCanvas.height = 256;
+const skyCtx = skyCanvas.getContext('2d'), skyTex = new THREE.CanvasTexture(skyCanvas);
+const skyMat = new THREE.MeshBasicMaterial({ map: skyTex, side: THREE.BackSide, fog: false, toneMapped: false });
+scene.add(new THREE.Mesh(new THREE.SphereGeometry(400, 24, 24), skyMat));
+const discMat = new THREE.MeshBasicMaterial({ color: 0xffffff, fog: false, toneMapped: false, transparent: true });
+const disc = new THREE.Mesh(new THREE.SphereGeometry(11, 16, 16), discMat); scene.add(disc);
+const stars = (() => {
+  const n = 700, p = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) { const u = Math.random() * Math.PI * 2, v = Math.acos(Math.random() * 0.95), r = 380; p[i*3] = r*Math.sin(v)*Math.cos(u); p[i*3+1] = r*Math.cos(v); p[i*3+2] = r*Math.sin(v)*Math.sin(u); }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(p, 3));
+  const m = new THREE.Points(g, new THREE.PointsMaterial({ color: 0xffffff, size: 1.8, sizeAttenuation: false, fog: false, transparent: true, opacity: 0, depthWrite: false, toneMapped: false }));
+  m.frustumCulled = false; scene.add(m); return m;
+})();
+const hemi = scene.children.find(o => o.isHemisphereLight);
+
+// Sky-driven reflections (wet roads, glass, car paint) — a tiny scene sharing the sky material
+const envScene = new THREE.Scene(), envDisc = new THREE.Mesh(new THREE.SphereGeometry(11 * 0.25, 8, 8), discMat);
+envScene.add(new THREE.Mesh(new THREE.SphereGeometry(100, 16, 16), skyMat)); envScene.add(envDisc);
+const pmrem = new THREE.PMREMGenerator(renderer); let envRT = null, _envAt = -1e9, _skyAt = -1e9, _lastAt = performance.now(), rainAmt = 0;
+
+// Rain streaks around the player
+const RAIN_N = 900, RAIN_B = 36, rainD = new Float32Array(RAIN_N * 3), rainP = new Float32Array(RAIN_N * 6);
+for (let i = 0; i < RAIN_N; i++) { rainD[i*3] = (Math.random() - 0.5) * 400; rainD[i*3+1] = Math.random() * 22; rainD[i*3+2] = (Math.random() - 0.5) * 400; }
+const rainGeo = new THREE.BufferGeometry(); rainGeo.setAttribute('position', new THREE.BufferAttribute(rainP, 3));
+const rainMesh = new THREE.LineSegments(rainGeo, new THREE.LineBasicMaterial({ color: 0xaec6e0, transparent: true, opacity: 0, fog: false, depthWrite: false }));
+rainMesh.frustumCulled = false; rainMesh.visible = false; scene.add(rainMesh);
+const ROAD_BASE = new THREE.Color(0x55565c), GREY = new THREE.Color(0x8d959c);
+
+function updateAtmosphere() {
+  const now = performance.now(), dt = Math.min(0.1, (now - _lastAt) / 1000); _lastAt = now;
+  const inPriv = !!privScene, T = inPriv ? 0.5 : cityClock();
+  rainAmt += (rainTarget() - rainAmt) * Math.min(1, dt * 0.25);
+  const R = inPriv ? 0 : rainAmt, s = skySample(T);
+  const lum = 0.35 + 0.65 * Math.min(1, s.hi), grey = GREY.clone().multiplyScalar(lum);
+  s.fog.lerp(grey, R * 0.7); s.top.lerp(grey, R * 0.75); s.mid.lerp(grey, R * 0.8); s.hor.lerp(grey, R * 0.7);
+  const night = Math.min(1, Math.max(0, (0.6 - s.hi) / 0.3));
+  // sun / moon
+  const a = (T - 0.25) * Math.PI * 2, ca = Math.cos(a), sa = Math.sin(a), sg = sa >= 0 ? 1 : -1;
+  const ax = myAvatar.position.x, az = myAvatar.position.z;
+  sun.position.set(ax + ca * 45, Math.abs(sa) * 45 + 8, az + 20); sun.target.position.set(ax, 0, az);
+  sun.color.copy(s.sun); sun.intensity = s.si * (1 - 0.7 * R);
+  hemi.color.copy(s.mid).lerp(new THREE.Color(0xffffff), 0.5); hemi.groundColor.set(0x8f8464).multiplyScalar(lum);
+  hemi.intensity = s.hi * 0.6 * (1 - 0.25 * R);
+  disc.position.set(sg * ca * 350, sg * sa * 350, 100); disc.visible = R < 0.9; discMat.opacity = 1 - R;
+  discMat.color.copy(s.sun).lerp(new THREE.Color(0xffffff), night > 0.5 ? 0.6 : 0.4);
+  envDisc.position.copy(disc.position).multiplyScalar(0.25);
+  stars.material.opacity = night * (1 - R);
+  if (!inPriv) { scene.fog.color.copy(s.fog); scene.fog.near = 45 - 25 * R - 15 * night; scene.fog.far = 170 - 80 * R - 40 * night; }
+  // sky gradient texture (twice a second is plenty)
+  if (now - _skyAt > 500) {
+    _skyAt = now;
+    const g = skyCtx.createLinearGradient(0, 0, 0, 256);
+    g.addColorStop(0, '#' + s.top.getHexString()); g.addColorStop(0.55, '#' + s.mid.getHexString());
+    g.addColorStop(0.8, '#' + s.hor.getHexString()); g.addColorStop(1, '#' + s.hor.getHexString());
+    skyCtx.fillStyle = g; skyCtx.fillRect(0, 0, 2, 256); skyTex.needsUpdate = true;
+  }
+  if (now - _envAt > ATMO.envEveryMs) {
+    _envAt = now;
+    const rt = pmrem.fromScene(envScene, 0, 0.1, 1000);
+    scene.environment = rt.texture; if (envRT) envRT.dispose(); envRT = rt;
+  }
+  // wet roads
+  if (window.ROAD_MAT) { ROAD_MAT.roughness = 0.95 - 0.7 * R; ROAD_MAT.color.copy(ROAD_BASE).multiplyScalar(1 - 0.45 * R); ROAD_MAT.envMapIntensity = 1 + 1.5 * R; }
+  // rain
+  rainMesh.visible = R > 0.02;
+  if (rainMesh.visible) {
+    rainMesh.material.opacity = 0.35 * R;
+    for (let i = 0; i < RAIN_N; i++) {
+      let y = rainD[i*3+1] - 28 * dt; if (y < 0) y += 22; rainD[i*3+1] = y;
+      const x = ax + ((((rainD[i*3] - ax) % RAIN_B) + RAIN_B) % RAIN_B) - RAIN_B / 2, z = az + ((((rainD[i*3+2] - az) % RAIN_B) + RAIN_B) % RAIN_B) - RAIN_B / 2;
+      rainP[i*6] = x; rainP[i*6+1] = y; rainP[i*6+2] = z; rainP[i*6+3] = x + 0.04; rainP[i*6+4] = y + 0.7; rainP[i*6+5] = z;
+    }
+    rainGeo.attributes.position.needsUpdate = true;
+  }
+}
+
 
 const BLOCK = 20, GRID = 6, ROAD_W = 6;
 
@@ -1126,7 +1236,7 @@ const ground = new THREE.Mesh(
 ground.rotation.x = -Math.PI/2;
 scene.add(ground);
 { // asphalt roads laid over the green (a road on every multiple of BLOCK, ROAD_W wide)
-  const roadMat = new THREE.MeshStandardMaterial({ color: 0x55565c });
+  const roadMat = new THREE.MeshStandardMaterial({ color: 0x55565c }); window.ROAD_MAT = roadMat;
   for (let i = -GRID/2; i <= GRID/2; i++) {
     const rv = new THREE.Mesh(new THREE.BoxGeometry(ROAD_W, 0.02, GRID*BLOCK + ROAD_W), roadMat); rv.position.set(i*BLOCK, 0.01, 0); scene.add(rv);
     const rh = new THREE.Mesh(new THREE.BoxGeometry(GRID*BLOCK + ROAD_W, 0.02, ROAD_W), roadMat); rh.position.set(0, 0.01, i*BLOCK); scene.add(rh);
@@ -3824,7 +3934,7 @@ function animate() {
   keralaTick(t);
   const nowp = performance.now();
   tickAvatar(myAvatar, nowp); if (chayaNpc) tickAvatar(chayaNpc, nowp); if (milkmaid) tickAvatar(milkmaid, nowp);
-  sun.position.set(myAvatar.position.x + 18, 40, myAvatar.position.z + 12); sun.target.position.set(myAvatar.position.x, 0, myAvatar.position.z);
+  updateAtmosphere();
   updateWaypointReadout();
   if (waypointBeacon.visible) waypointBeacon.position.y = 1.2 + Math.sin(t*3)*0.15;
   if (mapOpen) drawMap();
