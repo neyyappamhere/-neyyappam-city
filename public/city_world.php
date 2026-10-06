@@ -1180,6 +1180,8 @@ for (let i = 0; i < RAIN_N; i++) { rainD[i*3] = (Math.random() - 0.5) * 400; rai
 const rainGeo = new THREE.BufferGeometry(); rainGeo.setAttribute('position', new THREE.BufferAttribute(rainP, 3));
 const rainMesh = new THREE.LineSegments(rainGeo, new THREE.LineBasicMaterial({ color: 0xaec6e0, transparent: true, opacity: 0, fog: false, depthWrite: false }));
 rainMesh.frustumCulled = false; rainMesh.visible = false; scene.add(rainMesh);
+const REFLECT = [];
+function reflective(m, rough, metal, inten) { m.roughness = rough; m.metalness = metal; m.envMapIntensity = inten; REFLECT.push(m); if (envRT) m.envMap = envRT.texture; return m; }
 const ROAD_BASE = new THREE.Color(0x55565c), GREY = new THREE.Color(0x8d959c);
 
 function updateAtmosphere() {
@@ -1213,8 +1215,10 @@ function updateAtmosphere() {
   if (now - _envAt > ATMO.envEveryMs) {
     _envAt = now;
     const rt = pmrem.fromScene(envScene, 0, 0.1, 1000);
-    if (window.ROAD_MAT) { ROAD_MAT.envMap = rt.texture; ROAD_MAT.needsUpdate = true; } if (envRT) envRT.dispose(); envRT = rt;
+    if (window.ROAD_MAT && !REFLECT.includes(ROAD_MAT)) REFLECT.push(ROAD_MAT); REFLECT.forEach(m => { if (!m.envMap) m.needsUpdate = true; m.envMap = rt.texture; }); if (envRT) envRT.dispose(); envRT = rt;
   }
+  if (window.cloudMat) { cloudMat.color.copy(s.hor).lerp(new THREE.Color(0xffffff), 0.55).lerp(grey, R * 0.8).multiplyScalar(0.2 + 0.8 * Math.min(1, s.hi)); cloudMat.opacity = 0.9 - 0.2 * night + 0.1 * R; }
+  if (window.BIRDS) BIRDS.visible = night < 0.6 && R < 0.8;
   // wet roads
   if (window.ROAD_MAT) { ROAD_MAT.roughness = 0.95 - 0.7 * R; ROAD_MAT.color.copy(ROAD_BASE).multiplyScalar(1 - 0.45 * R); ROAD_MAT.envMapIntensity = 1.4 * R; }
   // rain
@@ -1293,8 +1297,8 @@ let carIdCounter = 0;
 function addParkedCar(x, z, rotY) {
   const group = new THREE.Group();
   const color = carColors[Math.floor(Math.random()*carColors.length)];
-  const bodyMat = new THREE.MeshStandardMaterial({ color });
-  const glassMat = new THREE.MeshStandardMaterial({ color: 0x9fc4e8 });
+  const bodyMat = reflective(new THREE.MeshStandardMaterial({ color }), 0.28, 0.55, 0.7);
+  const glassMat = reflective(new THREE.MeshStandardMaterial({ color: 0x1d2b38 }), 0.05, 0.3, 1.0);
 
   const lowerBody = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.5, 0.95), bodyMat);
   lowerBody.position.y = 0.42;
@@ -1319,7 +1323,7 @@ function addParkedCar(x, z, rotY) {
 
   const wheelGeo = new THREE.CylinderGeometry(0.24, 0.24, 0.22, 12);
   const wheelMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a });
-  const hubMat = new THREE.MeshStandardMaterial({ color: 0xc9c9c9 });
+  const hubMat = reflective(new THREE.MeshStandardMaterial({ color: 0xdadada }), 0.15, 0.95, 1.0);
   [[-0.6,-0.5],[-0.6,0.5],[0.6,-0.5],[0.6,0.5]].forEach(([wx,wz]) => {
     const w = new THREE.Mesh(wheelGeo, wheelMat);
     w.rotation.z = Math.PI/2;
@@ -2608,6 +2612,7 @@ function makeAvatarMesh(gender, outfitColor, hairStyle, role, look) {
     const b = add(head, new THREE.TorusGeometry(0.108, 0.012, 8, 22), M(0xffd700), 0, 0.06, 0); b.rotation.x = Math.PI / 2; b.scale.set(0.94, 1, 1.0);
   }
 
+  if (isF && !mature && !role) { if (style !== 'pony') add(head, sph(0.1, 14, 10), hairMat, 0, -0.14, -0.05).scale.set(0.95, 2.1, 0.75); [-1, 1].forEach(s => add(head, sph(0.008, 6, 6), gold, s * 0.097, -0.03, 0.005)); }
   const arms = [], elbows = [], knees = [], sleeveMat = torsoMat;
   [-1, 1].forEach(s => {
     const pv = new THREE.Group(); pv.position.set(s * sh, shY - 0.03, 0); pv.rotation.z = s * 0.07; body.add(pv);
@@ -2649,7 +2654,7 @@ function makeAvatarMesh(gender, outfitColor, hairStyle, role, look) {
     const sash = new THREE.Group(); sash.position.set(0, 1.22, 0); sash.scale.set(1, 1, 0.7); sash.rotation.z = 0.8; body.add(sash);
     add(sash, new THREE.TorusGeometry(0.175, 0.02, 8, 24), M(0xf2c230), 0, 0, 0).rotation.x = Math.PI / 2;
   } else if (isF) {
-    add(body, cyl(0.17, 0.27, 0.46, 18), M(color), 0, 0.7, 0);
+    add(body, cyl(0.17, 0.27, 0.46, 18), M(0xffffff, { roughness: 0.8, map: shirtTex(color, 'vice') }), 0, 0.7, 0);
   }
   if (look.h) group.scale.setScalar(look.h); if (look.w) body.scale.x *= look.w;
   group.userData = { legs, arms, elbows, knees, body, head, emote: null };
@@ -2672,6 +2677,7 @@ function tickAvatar(g, now) {
     else if (e.type === 'laugh') { a0x = a1x = -0.9; bob = Math.abs(Math.sin(T * 14)) * 0.04; rx = 0.12 + Math.sin(T * 10) * 0.06; }
     else if (e.type === 'aiyyo') { a0x = a1x = -2.6; a0z = -0.9; a1z = 0.9; rz = Math.sin(T * 30) * 0.05; bob = Math.abs(Math.sin(T * 18)) * 0.03; }
     else if (e.type === 'kiss') { a1x = -2.0 + Math.sin(T * 6) * 0.15; a1z = 0.4; rx = -0.05; }
+    else if (e.type === 'punch') { a1x = -1.55 + Math.sin(T * 24) * 0.25; a0x = -0.5; a0z = -0.2; rx = 0.12; }
   } else u.emote = null;
   u.legs[0].rotation.x = l0; u.legs[1].rotation.x = l1;
   u.arms[0].rotation.x = a0x; u.arms[1].rotation.x = a1x; u.arms[0].rotation.z = a0z; u.arms[1].rotation.z = a1z;
@@ -2706,6 +2712,108 @@ function makeLabel(text, sub) {
   return sprite;
 }
 
+
+/* =========================================================
+   PHASE 3 — Clouds, flying birds, fighting the bots (F key / Fight button) with Manglish dialogue
+   ========================================================= */
+const FIGHT_LINES = {
+  start: ['Nee enthinada enne adikkunne? 😡', 'Ninakk pranthaano? 🤪', 'Da da, kalikalle! ☝️😤', 'Nee eethada? 🧐', 'Vattaano ninakk? 🤨', 'Ente mukhathu nokkiyal adi kittum! 👊', 'Ayyo! Enthonnadey ithu? 😲', 'Njan aarenn ariyo ninakk? 😎', 'Pettannu kali maatti pokkolu! 🙄', 'Ninakk veettil aarum illeda? 😠'],
+  hit: ['Ayyo ente nadum! 😭', 'Aah! Veedhanikkunnu da! 🤕', 'Enthuvaado ee kaanikkunne? 😵', 'Nee ente kayyil ninnu vaangum! 😠', 'Amme! 😫', 'Ayyayyo, pallu poyi! 😬', 'Kalikkaan aano udheshikkunne? 😤', 'Ente kannil iruttu! 🌟😵', 'Poda poda! 😤', 'Nee ente pani kaanum! 🔥', 'Nee valiya aalaanennano vicharam? 🤣', 'Ithinu nee anubhavikkum! 😡'],
+  attack: ['Edaa, ee adi vaangikko! 👊😠', 'Ithu ninakku ullathaanu! 💥', 'Kandille ente kai? 😤👊', 'Nilkkada avide! 🏃😡', 'Njan oru nalla adi tharum! 😈', 'Ninte kali ivide venda! 🚫', 'Pedichu poyo? 😏'],
+  down: ['Mathi mathi, njan thott! 🏳️😩', 'Ayyo, maappu tharanam chetta! 🙏😭', 'Ini ninte vazhikku varilla! 😰', 'Ente kaalu pidikkaam, vidu! 🥺'],
+  quit: ['Pinne kaanam da! 😒', 'Ninne njan pinne kaanikkunnund! 😤', 'Ee naadu nannaavilla! 🙄']
+};
+const _pick = a => a[Math.floor(Math.random() * a.length)];
+function makeBubble() {
+  const c = document.createElement('canvas'); c.width = 512; c.height = 128;
+  const t = new THREE.CanvasTexture(c), sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, transparent: true, depthTest: false }));
+  sp.scale.set(3.4, 0.85, 1); sp.renderOrder = 20; sp.visible = false; sp.userData = { c, t }; scene.add(sp); return sp;
+}
+function say(p, kind) {
+  const txt = _pick(FIGHT_LINES[kind]); if (!p.bubble) p.bubble = makeBubble();
+  const { c, t } = p.bubble.userData, x = c.getContext('2d'); x.clearRect(0, 0, 512, 128);
+  x.fillStyle = 'rgba(255,255,255,0.96)'; x.beginPath(); x.moveTo(24, 6); x.arcTo(508, 6, 508, 100, 24); x.arcTo(508, 100, 4, 100, 24); x.arcTo(4, 100, 4, 6, 24); x.arcTo(4, 6, 508, 6, 24); x.fill();
+  x.beginPath(); x.moveTo(236, 98); x.lineTo(256, 124); x.lineTo(276, 98); x.fill();
+  let size = 30; x.font = 'bold ' + size + 'px sans-serif'; while (x.measureText(txt).width > 470 && size > 16) { size -= 1; x.font = 'bold ' + size + 'px sans-serif'; }
+  x.fillStyle = '#1a1020'; x.textAlign = 'center'; x.fillText(txt, 256, 62 + size / 3); t.needsUpdate = true; p.sayUntil = performance.now() + 2600;
+}
+function nearestPed(maxD) {
+  let best = null, bd = maxD;
+  PEDS.forEach(p => { if (p.state === 'down' || !p.g.visible) return; const d = Math.hypot(p.g.position.x - myAvatar.position.x, p.g.position.z - myAvatar.position.z); if (d < bd) { bd = d; best = p; } });
+  return best;
+}
+let _punchAt = 0;
+function doPunch() {
+  const now = performance.now(); if (now < _punchAt || privScene) return; _punchAt = now + 450;
+  myAvatar.userData.emote = { type: 'punch', until: now + 350 };
+  const p = nearestPed(3.2); if (!p) return;
+  if (p.hp === undefined) p.hp = 100;
+  const dx = p.g.position.x - myAvatar.position.x, dz = p.g.position.z - myAvatar.position.z, d = Math.hypot(dx, dz) || 1;
+  myAvatar.rotation.y = Math.atan2(dx, dz);
+  if (p.state !== 'fight') { p.state = 'fight'; p.nextAtk = now + 1200; p.g.userData.walkAmp = 0; say(p, 'start'); }
+  else if (Math.random() < 0.8) say(p, 'hit');
+  p.hp -= 25; p.g.position.x += dx / d * 0.6; p.g.position.z += dz / d * 0.6;
+  if (p.hp <= 0) { p.state = 'down'; p.downUntil = now + 4500; say(p, 'down'); p.g.rotation.order = 'YXZ'; p.g.rotation.x = -Math.PI / 2; p.g.position.y = 0.15; }
+}
+function resumePath(p) {
+  const x = p.g.position.x, z = p.g.position.z, H = GRID / 2, lx = Math.max(-H, Math.min(H, Math.round(x / BLOCK))), lz = Math.max(-H, Math.min(H, Math.round(z / BLOCK)));
+  const dz = z - lz * BLOCK, dx = x - lx * BLOCK, off = ROAD_W / 2 + 1.3;
+  if (Math.abs(dz) <= Math.abs(dx)) { p.axis = 0; p.line = lz; p.pos = x; p.side = (dz >= 0 ? 1 : -1) * off; } else { p.axis = 1; p.line = lx; p.pos = z; p.side = (dx >= 0 ? 1 : -1) * off; }
+  p.hp = 100; p.state = 'walk'; p.cool = 1; p.g.userData.walkAmp = 0.5; p.g.rotation.x = 0; p.g.rotation.order = 'XYZ'; p.g.position.y = 0;
+}
+const fightBtn = document.createElement('button'); fightBtn.id = 'fight-btn'; fightBtn.textContent = '👊 Fight (F)';
+fightBtn.style.cssText = 'position:fixed;left:50%;bottom:150px;transform:translateX(-50%);z-index:7;padding:12px 22px;border:none;border-radius:24px;font-weight:700;font-size:.9em;cursor:pointer;color:#fff;background:linear-gradient(135deg,#FE019A,#9b5de5);display:none;box-shadow:0 8px 22px rgba(0,0,0,.5)';
+document.body.appendChild(fightBtn); fightBtn.onclick = doPunch;
+addEventListener('keydown', e => { if ((e.key === 'f' || e.key === 'F') && !/INPUT|TEXTAREA/.test(document.activeElement && document.activeElement.tagName)) doPunch(); });
+let _fAt = performance.now();
+function updateFight() {
+  const now = performance.now(), dt = Math.min(0.1, (now - _fAt) / 1000); _fAt = now; const me = myAvatar.position;
+  PEDS.forEach(p => {
+    if (p.hp === undefined) p.hp = 100;
+    const g = p.g;
+    if (p.bubble) { p.bubble.visible = now < p.sayUntil && !privScene; p.bubble.position.set(g.position.x, g.position.y + (p.state === 'down' ? 1.1 : 2.4), g.position.z); }
+    if (p.state === 'fight') {
+      const dx = me.x - g.position.x, dz = me.z - g.position.z, d = Math.hypot(dx, dz) || 1; g.rotation.y = Math.atan2(dx, dz);
+      if (d > 2.0) { g.position.x += dx / d * 2.6 * dt; g.position.z += dz / d * 2.6 * dt; g.userData.walkAmp = 0.7; }
+      else { g.userData.walkAmp = 0; if (now > p.nextAtk) { p.nextAtk = now + 1500 + Math.random() * 600; g.userData.emote = { type: 'punch', until: now + 350 }; if (Math.random() < 0.5) say(p, 'attack'); if (Math.random() < 0.4) showToast(_pick(['Ouch! 💥', 'Aah! 🤕', 'He hit you! 👊'])); } }
+      if (d > 16) { say(p, 'quit'); resumePath(p); }
+    } else if (p.state === 'down' && now > p.downUntil) { say(p, 'quit'); resumePath(p); }
+  });
+  const near = nearestPed(3.2); fightBtn.style.display = (near && !privScene) ? 'block' : 'none';
+}
+
+// --- Clouds (drifting sprites tinted by the sky) and flocks of birds ---
+const cloudTex = (() => { const c = document.createElement('canvas'); c.width = 256; c.height = 128; const x = c.getContext('2d');
+  [[70, 70, 46], [120, 56, 54], [175, 68, 48], [100, 82, 40], [150, 84, 42]].forEach(p => { const g = x.createRadialGradient(p[0], p[1], 2, p[0], p[1], p[2]); g.addColorStop(0, 'rgba(255,255,255,0.95)'); g.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = g; x.fillRect(0, 0, 256, 128); });
+  return new THREE.CanvasTexture(c); })();
+window.cloudMat = new THREE.SpriteMaterial({ map: cloudTex, transparent: true, opacity: 0.9, depthWrite: false, fog: false });
+const cloudGroup = new THREE.Group(); scene.add(cloudGroup);
+for (let i = 0; i < 18; i++) { const s = new THREE.Sprite(cloudMat), a = Math.random() * 6.283, r = 170 + Math.random() * 190; s.position.set(Math.cos(a) * r, 70 + Math.random() * 60, Math.sin(a) * r); s.scale.set(110 + Math.random() * 70, 42 + Math.random() * 20, 1); cloudGroup.add(s); }
+const BIRDS = new THREE.Group(); scene.add(BIRDS); window.BIRDS = BIRDS;
+const _flocks = [], _wingG = (() => { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(new Float32Array([0, 0, 0.16, 0, 0, -0.16, 0.85, 0.04, -0.05]), 3)); g.computeVertexNormals(); return g; })();
+(function () {
+  const coarse = typeof matchMedia !== 'undefined' && matchMedia('(pointer:coarse)').matches, F = coarse ? 4 : 6, N = coarse ? 4 : 5, bodyG = new THREE.SphereGeometry(0.15, 8, 6);
+  for (let f = 0; f < F; f++) {
+    const fl = { r: 30 + Math.random() * 80, a0: Math.random() * 6.283, w: (0.07 + Math.random() * 0.06) * (Math.random() < 0.5 ? -1 : 1), h: 16 + Math.random() * 14, birds: [] }, col = Math.random() < 0.5 ? 0xf4f4f0 : 0x1e1e22;
+    const m = new THREE.MeshStandardMaterial({ color: col, roughness: 0.9, side: THREE.DoubleSide });
+    for (let i = 0; i < N; i++) {
+      const b = new THREE.Group(), body = new THREE.Mesh(bodyG, m); body.scale.set(0.7, 0.7, 1.6); b.add(body);
+      const wr = new THREE.Mesh(_wingG, m), wl = new THREE.Mesh(_wingG, m); wl.scale.x = -1; b.add(wr); b.add(wl);
+      b.userData = { wr, wl, ox: (Math.random() - 0.5) * 7, oy: (Math.random() - 0.5) * 3, oz: (Math.random() - 0.5) * 7, ph: Math.random() * 6 }; BIRDS.add(b); fl.birds.push(b);
+    }
+    _flocks.push(fl);
+  }
+})();
+let _skAt = performance.now();
+function updateSky() {
+  const now = performance.now(), dt = Math.min(0.1, (now - _skAt) / 1000), t = now / 1000; _skAt = now; cloudGroup.rotation.y += dt * 0.004;
+  _flocks.forEach(fl => fl.birds.forEach(b => {
+    const a = fl.a0 + t * fl.w, u = b.userData, sg = Math.sign(fl.w);
+    b.position.set(Math.cos(a) * fl.r + u.ox, fl.h + u.oy + Math.sin(t * 1.3 + u.ph) * 0.4, Math.sin(a) * fl.r + u.oz);
+    b.rotation.y = Math.atan2(-Math.sin(a) * sg, Math.cos(a) * sg); const fl2 = Math.sin(t * 9 + u.ph) * 0.7; u.wr.rotation.z = fl2; u.wl.rotation.z = -fl2;
+  }));
+}
+
 let myGender = 'other';
 let myOutfitColor = '#9b5de5';
 let myHairStyle = 'short';
@@ -2737,7 +2845,7 @@ const PEDS = []; let _pedAt = performance.now();
   const skins = [0xf1c9a5, 0xe0ac82, 0xc68a5d, 0xae7a50, 0x8d5a3b, 0x6b4429], shirts = ['#ff6fb5', '#2ec4b6', '#ffd166', '#ff8a5b', '#f8f4e3', '#7bdff2', '#b388eb'];
   const pants = [0xf1ece0, 0xd9c9a3, 0x3d5a80, 0x2e2e38, 0xe8dcc8], hairs = ['short', 'pony', 'bandana'], R = a => a[Math.floor(Math.random() * a.length)];
   for (let i = 0; i < PED_COUNT; i++) {
-    const g = makeAvatarMesh(Math.random() < 0.5 ? 'female' : 'male', R(shirts), R(hairs), null, { skin: R(skins), pants: R(pants), shades: Math.random() < 0.4, h: 0.95 + Math.random() * 0.1, w: 0.92 + Math.random() * 0.2 });
+    const g = makeAvatarMesh(Math.random() < 0.5 ? 'female' : 'male', R(shirts), R(hairs), null, { skin: R(skins), pants: R(pants), shades: Math.random() < 0.4, hair: R([0x0e0a08, 0x2b1a10, 0x4a2c17, 0x7a4a22, 0x8a8a8a]), h: 0.95 + Math.random() * 0.1, w: 0.92 + Math.random() * 0.2 });
     g.userData.walkAmp = 0.5; scene.add(g);
     PEDS.push({ g, axis: Math.random() < 0.5 ? 0 : 1, line: Math.floor(Math.random() * (GRID + 1)) - GRID / 2, side: (Math.random() < 0.5 ? -1 : 1) * (ROAD_W / 2 + 1.3), dir: Math.random() < 0.5 ? -1 : 1, pos: (Math.random() * 2 - 1) * half, speed: 1.1 + Math.random() * 0.7, cool: 0 });
   }
@@ -2745,7 +2853,7 @@ const PEDS = []; let _pedAt = performance.now();
 function updatePeds() {
   const now = performance.now(), dt = Math.min(0.1, (now - _pedAt) / 1000); _pedAt = now; const half = GRID * BLOCK / 2;
   PEDS.forEach(p => {
-    p.g.visible = !privScene; if (privScene) return;
+    p.g.visible = !privScene; if (privScene) return; if (p.state && p.state !== 'walk') return;
     const prev = p.pos; p.pos += p.dir * p.speed * dt; p.cool -= dt;
     if (Math.abs(p.pos) > half + 3) { p.dir *= -1; p.pos = Math.sign(p.pos) * (half + 3); }
     const k0 = Math.floor(prev / BLOCK), k1 = Math.floor(p.pos / BLOCK);
@@ -3998,7 +4106,7 @@ function animate() {
   updateMovement();
   keralaTick(t);
   const nowp = performance.now();
-  tickAvatar(myAvatar, nowp); if (chayaNpc) tickAvatar(chayaNpc, nowp); if (milkmaid) tickAvatar(milkmaid, nowp); updatePeds(); PEDS.forEach(p => tickAvatar(p.g, nowp));
+  tickAvatar(myAvatar, nowp); if (chayaNpc) tickAvatar(chayaNpc, nowp); if (milkmaid) tickAvatar(milkmaid, nowp); updatePeds(); updateSky(); updateFight(); PEDS.forEach(p => tickAvatar(p.g, nowp));
   updateAtmosphere();
   updateWaypointReadout();
   if (waypointBeacon.visible) waypointBeacon.position.y = 1.2 + Math.sin(t*3)*0.15;
