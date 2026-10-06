@@ -1122,7 +1122,7 @@ scene.add(sun); scene.add(sun.target);
    Everyone sees the same time/weather (derived from the wall clock).
    Tweak ATMO below. Test with ?time=0.5 (noon) ?time=0.8 (dusk) ?time=0 (night) ?rain=1
    ========================================================= */
-const ATMO = { dayMs: 20 * 60 * 1000, exposure: 1.2, rainBlockMs: 5 * 60 * 1000, rainChance: 0.3, envEveryMs: 12000 };
+const ATMO = { dayMs: 20 * 60 * 1000, exposure: 1.0, rainBlockMs: 5 * 60 * 1000, rainChance: 0.3, envEveryMs: 12000 };
 const _aq = new URLSearchParams(location.search);
 const SKY_KEYS = [
   { t: 0,    top: '#02030a', mid: '#0a1024', hor: '#1a1b33', fog: '#0b0e1c', sun: '#8fa4d8', si: 0.12, hi: 0.30 },
@@ -1191,7 +1191,7 @@ function updateAtmosphere() {
   sun.position.set(ax + ca * 45, Math.abs(sa) * 45 + 8, az + 20); sun.target.position.set(ax, 0, az);
   sun.color.copy(s.sun); sun.intensity = s.si * (1 - 0.7 * R);
   hemi.color.copy(s.mid).lerp(new THREE.Color(0xffffff), 0.5); hemi.groundColor.set(0x8f8464).multiplyScalar(lum);
-  hemi.intensity = s.hi * 0.6 * (1 - 0.25 * R);
+  hemi.intensity = s.hi * 1.0 * (1 - 0.25 * R);
   disc.position.set(sg * ca * 350, sg * sa * 350, 100); disc.visible = R < 0.9; discMat.opacity = 1 - R;
   discMat.color.copy(s.sun).lerp(new THREE.Color(0xffffff), night > 0.5 ? 0.6 : 0.4);
   envDisc.position.copy(disc.position).multiplyScalar(0.25);
@@ -1208,10 +1208,10 @@ function updateAtmosphere() {
   if (now - _envAt > ATMO.envEveryMs) {
     _envAt = now;
     const rt = pmrem.fromScene(envScene, 0, 0.1, 1000);
-    scene.environment = rt.texture; if (envRT) envRT.dispose(); envRT = rt;
+    if (window.ROAD_MAT) { ROAD_MAT.envMap = rt.texture; ROAD_MAT.needsUpdate = true; } if (envRT) envRT.dispose(); envRT = rt;
   }
   // wet roads
-  if (window.ROAD_MAT) { ROAD_MAT.roughness = 0.95 - 0.7 * R; ROAD_MAT.color.copy(ROAD_BASE).multiplyScalar(1 - 0.45 * R); ROAD_MAT.envMapIntensity = 1 + 1.5 * R; }
+  if (window.ROAD_MAT) { ROAD_MAT.roughness = 0.95 - 0.7 * R; ROAD_MAT.color.copy(ROAD_BASE).multiplyScalar(1 - 0.45 * R); ROAD_MAT.envMapIntensity = 1.4 * R; }
   // rain
   rainMesh.visible = R > 0.02;
   if (rainMesh.visible) {
