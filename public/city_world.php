@@ -1471,6 +1471,216 @@ function addParkedCar(x, z, rotY) {
   return id;
 }
 
+/* ---- RETRO VEHICLES ---- */
+const RVM = {
+  chrome: reflective(new THREE.MeshStandardMaterial({ color: 0xe6e8ec }), 0.12, 1.0, 1.3),
+  glass:  reflective(new THREE.MeshStandardMaterial({ color: 0x1b2a36, transparent: true, opacity: 0.85 }), 0.05, 0.3, 1.2),
+  tire:   new THREE.MeshStandardMaterial({ color: 0x141414, roughness: 0.95 }),
+  black:  new THREE.MeshStandardMaterial({ color: 0x1a1a1c, roughness: 0.6 }),
+  seat:   new THREE.MeshStandardMaterial({ color: 0x3a2416, roughness: 0.8 }),
+  engine: new THREE.MeshStandardMaterial({ color: 0x6e7076, metalness: 0.6, roughness: 0.45 }),
+  lamp:   new THREE.MeshStandardMaterial({ color: 0xfff4c8, emissive: 0xffe9a0, emissiveIntensity: 0.9 }),
+  tail:   new THREE.MeshStandardMaterial({ color: 0xb01212, emissive: 0x800000, emissiveIntensity: 0.6 }),
+  plate:  new THREE.MeshStandardMaterial({ color: 0xf2f2f2 }),
+  skin:   new THREE.MeshStandardMaterial({ color: 0xc68a5d, roughness: 0.6 }),
+  pants:  new THREE.MeshStandardMaterial({ color: 0x2b3a5a, roughness: 0.8 }),
+};
+const RV_CAR_COLORS = [0xf2f0e6, 0xf2f0e6, 0x1c1c1c, 0xb3261e, 0x2f5d3a, 0xe8b923, 0x3c5a8a];
+const RV_BIKE_COLORS = [0x1f2a44, 0x7a1f1f, 0x1c1c1c, 0x2f5d3a, 0x8a8a90, 0xb5651d];
+const rvPick = a => a[Math.floor(Math.random() * a.length)];
+
+function rvPaint(color) { return reflective(new THREE.MeshStandardMaterial({ color }), 0.28, 0.55, 0.8); }
+function rvAdd(parent, geo, mat, x, y, z) { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); parent.add(m); return m; }
+
+// a tube between two points (used for frames, forks, exhausts, pillars)
+function rvTube(parent, a, b, r, mat, seg) {
+  const A = new THREE.Vector3(a[0], a[1], a[2]), B = new THREE.Vector3(b[0], b[1], b[2]), d = B.clone().sub(A), len = d.length();
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, seg || 8), mat);
+  m.position.copy(A).add(B).multiplyScalar(0.5);
+  m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize());
+  parent.add(m); return m;
+}
+// side profile (x = forward, y = up) pushed out sideways with soft bevelled edges => rounded 80s bodywork
+function rvExtrude(pts, depth, mat, bevel) {
+  const shape = new THREE.Shape(pts.map(p => new THREE.Vector2(p[0], p[1])));
+  const g = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: true, bevelSize: bevel, bevelThickness: bevel, bevelSegments: 3, curveSegments: 6 });
+  g.translate(0, 0, -depth / 2);
+  return new THREE.Mesh(g, mat);
+}
+
+// car wheel: black tyre + chrome hub with a dark bar so you can SEE it spin
+function rvWheel(parent, x, y, z, r, wide) {
+  const piv = new THREE.Group(); piv.position.set(x, y, z); parent.add(piv);
+  const t = rvAdd(piv, new THREE.CylinderGeometry(r, r, wide, 20), RVM.tire, 0, 0, 0); t.rotation.x = Math.PI / 2;
+  const h = rvAdd(piv, new THREE.CylinderGeometry(r * 0.62, r * 0.62, wide + 0.02, 14), RVM.chrome, 0, 0, 0); h.rotation.x = Math.PI / 2;
+  rvAdd(piv, new THREE.BoxGeometry(r * 1.0, r * 0.16, wide + 0.04), RVM.black, 0, 0, 0);
+  rvAdd(piv, new THREE.BoxGeometry(r * 0.16, r * 1.0, wide + 0.04), RVM.black, 0, 0, 0);
+  return piv;
+}
+// bike wheel: tyre torus + chrome rim + 8 spokes
+function rvSpokeWheel(parent, x, r) {
+  const piv = new THREE.Group(); piv.position.set(x, r, 0); parent.add(piv);
+  rvAdd(piv, new THREE.TorusGeometry(r - 0.05, 0.05, 8, 26), RVM.tire, 0, 0, 0);
+  rvAdd(piv, new THREE.TorusGeometry(r - 0.09, 0.012, 6, 26), RVM.chrome, 0, 0, 0);
+  for (let k = 0; k < 4; k++) { const s = rvAdd(piv, new THREE.BoxGeometry(2 * (r - 0.09), 0.006, 0.006), RVM.chrome, 0, 0, 0); s.rotation.z = k * Math.PI / 4; }
+  const hub = rvAdd(piv, new THREE.CylinderGeometry(0.04, 0.04, 0.12, 10), RVM.chrome, 0, 0, 0); hub.rotation.x = Math.PI / 2;
+  return piv;
+}
+
+/* ---------------- CARS ---------------- */
+function buildRetroCar(style, color, opts) {
+  opts = opts || {};
+  const g = new THREE.Group(), pad = style === 'padmini', paint = rvPaint(color);
+  const roofMat = (pad && opts.roof !== undefined) ? rvPaint(opts.roof) : paint;
+
+  g.add(rvExtrude(pad
+    ? [[-1.1, 0.26], [1.08, 0.26], [1.1, 0.5], [1.0, 0.7], [0.3, 0.76], [-0.95, 0.76], [-1.1, 0.6]]
+    : [[-1.15, 0.26], [1.12, 0.26], [1.15, 0.5], [1.02, 0.74], [0.35, 0.8], [-0.95, 0.8], [-1.15, 0.62]], 0.84, paint, 0.05));
+
+  const cab = pad
+    ? [[-0.85, 0.78], [0.42, 0.78], [0.3, 1.16], [-0.66, 1.18], [-0.85, 0.98]]
+    : [[-0.82, 0.78], [0.46, 0.78], [0.22, 1.22], [-0.55, 1.24], [-0.8, 1.0]];
+  const roofY = pad ? 1.16 : 1.22;
+  g.add(rvExtrude(cab, 0.74, RVM.glass, 0.01));
+  g.add(rvExtrude([[-0.62, roofY], [0.26, roofY], [0.27, roofY + 0.07], [-0.6, roofY + 0.09]], 0.78, roofMat, 0.03));
+
+  [-1, 1].forEach(s => {
+    const z = s * 0.38;
+    rvTube(g, [cab[1][0], cab[1][1], z], [cab[2][0], cab[2][1], z], 0.028, paint);           // A pillar
+    rvTube(g, [cab[0][0], cab[0][1], z], [cab[4][0], cab[4][1], z], 0.03, paint);            // C pillar
+    rvTube(g, [cab[4][0], cab[4][1], z], [cab[3][0], cab[3][1], z], 0.03, paint);
+    rvTube(g, [-0.2, 0.78, z], [-0.2, roofY, z], 0.022, paint);                                // B pillar
+    const hl = rvAdd(g, new THREE.CylinderGeometry(0.12, 0.12, 0.07, 18), RVM.chrome, 1.1, 0.64, s * 0.33); hl.rotation.z = Math.PI / 2;
+    const ln = rvAdd(g, new THREE.CylinderGeometry(0.095, 0.095, 0.075, 18), RVM.lamp, 1.12, 0.64, s * 0.33); ln.rotation.z = Math.PI / 2;
+    rvAdd(g, new THREE.BoxGeometry(0.04, 0.1, 0.18), RVM.tail, -1.19, 0.62, s * 0.34);       // tail lamp
+    rvAdd(g, new THREE.BoxGeometry(0.12, 0.03, 0.03), RVM.chrome, -0.05, 0.74, s * 0.485);   // door handle
+    rvAdd(g, new THREE.BoxGeometry(2.1, 0.025, 0.012), RVM.chrome, 0, 0.55, s * 0.476);      // chrome side strip
+  });
+  rvAdd(g, new THREE.BoxGeometry(0.05, 0.17, 0.46), RVM.chrome, 1.17, 0.52, 0);              // grille
+  for (let i = -2; i <= 2; i++) rvAdd(g, new THREE.BoxGeometry(0.06, 0.15, 0.012), RVM.black, 1.18, 0.52, i * 0.08);
+  rvAdd(g, new THREE.BoxGeometry(0.09, 0.07, 1.0), RVM.chrome, 1.23, 0.33, 0);               // bumpers
+  rvAdd(g, new THREE.BoxGeometry(0.09, 0.07, 1.0), RVM.chrome, -1.21, 0.33, 0);
+  rvAdd(g, new THREE.BoxGeometry(0.02, 0.12, 0.36), RVM.plate, -1.21, 0.48, 0);              // number plate
+  rvAdd(g, new THREE.SphereGeometry(0.035, 8, 8), RVM.chrome, 1.0, 0.78, 0);                 // bonnet ornament
+  if (opts.beacon) { const b = rvAdd(g, new THREE.CylinderGeometry(0.06, 0.07, 0.1, 10), new THREE.MeshStandardMaterial({ color: 0xff2020, emissive: 0xff0000, emissiveIntensity: 0.8 }), -0.15, roofY + 0.14, 0); }
+
+  const wheels = [];
+  [[0.72, 0.5], [0.72, -0.5], [-0.72, 0.5], [-0.72, -0.5]].forEach(([x, z]) => {
+    rvAdd(g, new THREE.CylinderGeometry(0.31, 0.31, 0.02, 20), RVM.black, x, 0.27, z * 0.95).rotation.x = Math.PI / 2;   // dark wheel arch
+    wheels.push({ piv: rvWheel(g, x, 0.25, z, 0.25, 0.2), r: 0.25 });
+  });
+  if (pad) g.scale.setScalar(0.96);
+  g.userData = { rwheels: wheels };
+  return g;
+}
+
+/* ---------------- BIKES ---------------- */
+function rvRider(g, seatX, seatY, hbX, hbY, shirtColor) {
+  const r = new THREE.Group(); r.visible = false; g.add(r);
+  const shirt = new THREE.MeshStandardMaterial({ color: shirtColor, roughness: 0.8 });
+  const torso = rvAdd(r, new THREE.BoxGeometry(0.2, 0.46, 0.34), shirt, seatX + 0.1, seatY + 0.33, 0); torso.rotation.z = -0.3;
+  rvAdd(r, new THREE.SphereGeometry(0.11, 12, 10), RVM.skin, seatX + 0.23, seatY + 0.68, 0);
+  const hair = rvAdd(r, new THREE.SphereGeometry(0.115, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.55), RVM.black, seatX + 0.22, seatY + 0.7, 0); hair.rotation.z = -0.25;
+  [-1, 1].forEach(s => {
+    rvTube(r, [seatX + 0.2, seatY + 0.52, s * 0.17], [hbX, hbY, s * 0.3], 0.04, shirt);                               // arms
+    rvTube(r, [seatX, seatY + 0.12, s * 0.1], [seatX + 0.36, seatY + 0.05, s * 0.15], 0.06, RVM.pants);               // thighs
+    rvTube(r, [seatX + 0.36, seatY + 0.05, s * 0.15], [seatX + 0.28, seatY - 0.4, s * 0.17], 0.045, RVM.pants);       // shins
+    rvAdd(r, new THREE.BoxGeometry(0.2, 0.07, 0.09), RVM.black, seatX + 0.33, seatY - 0.43, s * 0.17);                // shoes
+  });
+  return r;
+}
+
+function buildRetroBike(style, color) {
+  const g = new THREE.Group(), paint = rvPaint(color), scooter = style === 'chetak', wheels = [];
+  const wr = scooter ? 0.22 : 0.34, fx = scooter ? 0.62 : 0.72, rx = scooter ? -0.55 : -0.66;
+  wheels.push({ piv: rvSpokeWheel(g, fx, wr), r: wr }, { piv: rvSpokeWheel(g, rx, wr), r: wr });
+  let seatX, seatY, hbX, hbY;
+
+  if (!scooter) {
+    const hx = 0.42, hy = 0.98;
+    seatX = -0.38; seatY = 0.86; hbX = hx - 0.03; hbY = hy + 0.1;
+    [-1, 1].forEach(s => {
+      rvTube(g, [fx, wr, s * 0.09], [hx + 0.03, hy - 0.05, s * 0.09], 0.022, RVM.chrome);        // front fork
+      rvTube(g, [rx + 0.05, wr + 0.02, s * 0.15], [-0.35, 0.78, s * 0.15], 0.02, RVM.chrome);    // rear shocks
+      rvTube(g, [-0.05, 0.45, s * 0.14], [rx, wr, s * 0.14], 0.03, RVM.black);                    // swing arm
+      rvTube(g, [0.2, 0.32, s * 0.17], [-0.35, 0.34, s * 0.19], 0.035, RVM.chrome);               // exhaust pipe
+      rvTube(g, [-0.35, 0.34, s * 0.19], [-1.0, 0.4, s * 0.2], 0.07, RVM.chrome, 12);             // silencer (Bullet "thump")
+      rvTube(g, [hbX, hbY, s * 0.26], [hbX, hbY, s * 0.36], 0.03, RVM.black);                     // grips
+      rvAdd(g, new THREE.BoxGeometry(0.16, 0.03, 0.06), RVM.black, 0.0, 0.36, s * 0.22);          // foot pegs
+    });
+    rvTube(g, [hx, hy - 0.05, 0], [-0.05, 0.45, 0], 0.035, RVM.black);                              // frame
+    rvTube(g, [-0.05, 0.45, 0], [rx, wr, 0], 0.035, RVM.black);
+    rvTube(g, [-0.3, 0.8, 0], [rx, wr, 0], 0.03, RVM.black);
+    rvTube(g, [hx, hy - 0.05, 0], [-0.3, 0.8, 0], 0.035, RVM.black);
+    rvTube(g, [hx, hy - 0.05, 0], [hbX, hbY, 0], 0.025, RVM.chrome);                                // handlebar stem
+    rvTube(g, [hbX, hbY, -0.34], [hbX, hbY, 0.34], 0.017, RVM.chrome);                              // handlebar
+    const tank = rvAdd(g, new THREE.SphereGeometry(1, 18, 12), paint, 0.1, 0.98, 0); tank.scale.set(0.34, 0.17, 0.17);
+    rvAdd(g, new THREE.BoxGeometry(0.42, 0.3, 0.28), RVM.engine, 0.0, 0.5, 0);                      // engine block
+    rvAdd(g, new THREE.CylinderGeometry(0.1, 0.11, 0.3, 12), RVM.engine, 0.12, 0.73, 0);            // cylinder
+    rvAdd(g, new THREE.BoxGeometry(0.26, 0.2, 0.34), paint, -0.25, 0.62, 0);                        // side box / oil tank
+    rvAdd(g, new THREE.BoxGeometry(0.72, 0.09, 0.3), RVM.seat, seatX, seatY, 0);                    // seat
+    const hl = rvAdd(g, new THREE.SphereGeometry(0.13, 12, 10), RVM.chrome, hx + 0.16, hy - 0.04, 0); hl.scale.set(0.75, 1, 1);
+    rvAdd(g, new THREE.SphereGeometry(0.1, 12, 10), RVM.lamp, hx + 0.24, hy - 0.04, 0).scale.set(0.5, 1, 1);
+    rvAdd(g, new THREE.BoxGeometry(0.06, 0.06, 0.12), RVM.tail, -1.0, 0.8, 0);                      // tail lamp
+    rvAdd(g, new THREE.BoxGeometry(0.02, 0.1, 0.22), RVM.plate, -1.02, 0.62, 0);                    // number plate
+    [[fx, 0.75], [rx, 0.62]].forEach(([x, arcLen]) => {                                             // mudguards
+      const arc = Math.PI * arcLen, f = rvAdd(g, new THREE.TorusGeometry(wr + 0.03, 0.02, 6, 20, arc), paint, x, wr, 0);
+      f.rotation.z = Math.PI / 2 - arc / 2; f.scale.z = 4;
+    });
+  } else {
+    // Bajaj Chetak-style scooter
+    seatX = -0.45; seatY = 0.84; hbX = 0.4; hbY = 1.08;
+    g.add(rvExtrude([[-0.88, 0.3], [-0.1, 0.3], [-0.04, 0.7], [-0.8, 0.74], [-0.9, 0.5]], 0.34, paint, 0.04));     // rear body
+    g.add(rvExtrude([[0.12, 0.3], [0.3, 0.3], [0.42, 0.96], [0.32, 0.98]], 0.34, paint, 0.03));                    // leg shield
+    rvAdd(g, new THREE.BoxGeometry(0.5, 0.05, 0.34), RVM.black, 0.0, 0.3, 0);                                       // floor board
+    rvAdd(g, new THREE.BoxGeometry(0.56, 0.09, 0.3), RVM.seat, seatX, seatY, 0);                                    // seat
+    [-1, 1].forEach(s => {
+      rvTube(g, [fx, wr, s * 0.08], [0.4, 1.0, s * 0.08], 0.02, RVM.chrome);                                        // fork
+      rvTube(g, [-0.9, 0.35, s * 0.1], [-1.05, 0.33, s * 0.1], 0.03, RVM.chrome);                                   // exhaust tip
+    });
+    rvTube(g, [hbX, hbY, -0.3], [hbX, hbY, 0.3], 0.018, RVM.chrome);                                                // handlebar
+    const cowl = rvAdd(g, new THREE.SphereGeometry(1, 14, 10), paint, 0.42, 1.04, 0); cowl.scale.set(0.2, 0.15, 0.2);
+    rvAdd(g, new THREE.SphereGeometry(0.09, 10, 8), RVM.lamp, 0.58, 1.04, 0).scale.set(0.5, 1, 1);
+    rvAdd(g, new THREE.BoxGeometry(0.05, 0.06, 0.12), RVM.tail, -0.92, 0.65, 0);
+    const fend = rvAdd(g, new THREE.TorusGeometry(wr + 0.03, 0.02, 6, 20, Math.PI * 0.7), paint, fx, wr, 0); fend.rotation.z = Math.PI / 2 - Math.PI * 0.35; fend.scale.z = 4;
+  }
+  g.userData = { rwheels: wheels, rider: rvRider(g, seatX, seatY, hbX, hbY, rvPick([0xf4f1e8, 0xc0392b, 0x2e86c1, 0xf2c230])) };
+  return g;
+}
+
+/* ---------------- registration into the existing `cars` registry ---------------- */
+let retroCounter = 0;
+function addRetroCar(x, z, rotY, style, color, opts) {
+  const g = buildRetroCar(style, color, opts); g.position.set(x, 0, z); g.rotation.y = rotY; scene.add(g);
+  const id = 'rcar_' + (retroCounter++); cars[id] = { id, group: g, occupiedBy: null }; return id;
+}
+function addRetroBike(x, z, rotY, style, color) {
+  const g = buildRetroBike(style, color); g.rotation.order = 'YXZ'; g.position.set(x, 0, z); g.rotation.y = rotY; scene.add(g);
+  const id = 'rbike_' + (retroCounter++); cars[id] = { id, group: g, occupiedBy: null, isBike: true }; return id;
+}
+function addRandomRetroCar(x, z, rotY) {
+  if (Math.random() < 0.55) return addRetroCar(x, z, rotY, 'ambassador', rvPick(RV_CAR_COLORS), { beacon: Math.random() < 0.15 });
+  return addRetroCar(x, z, rotY, 'padmini', 0xe8b923, { roof: 0x1a1a1a });     // black-yellow taxi look
+}
+function addRandomRetroBike(x, z, rotY) {
+  return addRetroBike(x, z, rotY, rvPick(['bullet', 'bullet', 'jawa', 'chetak']), rvPick(RV_BIKE_COLORS));
+}
+
+// per-frame: spin wheels from real movement, show the rider only when someone is on the bike, lean the bike back upright
+function retroTick() {
+  Object.values(cars).forEach(c => {
+    const u = c.group.userData; if (!u || !u.rwheels) return;
+    const p = c.group.position, ry = c.group.rotation.y;
+    if (u.lx !== undefined) {
+      const signed = (p.x - u.lx) * Math.cos(ry) + (p.z - u.lz) * (-Math.sin(ry));
+      u.rwheels.forEach(w => { w.piv.rotation.z -= signed / w.r; });
+    }
+    u.lx = p.x; u.lz = p.z;
+    if (u.rider) u.rider.visible = !!c.occupiedBy;
+    if (c.isBike && c.occupiedBy !== socket.id) c.group.rotation.x *= 0.85;
+  });
+}
+
 // --- Building: brick body, a real grid of geometric windows (not a texture), tan shopfront base ---
 const brickColors = [0xa8503a, 0xb85f42, 0x9a4832, 0xae5a3e];
 function addWindows(building, w, h, wallZOffset, faceSign) {
@@ -1589,7 +1799,8 @@ for (let gx = -GRID/2; gx < GRID/2; gx++) {
     cornerToggle = !cornerToggle;
     addStreetlight(cx - footprint/2 - 1, cz - footprint/2 - 1, cornerToggle);
     // 1-2 parked cars along the curb, engine-first toward the road
-    addParkedCar(cx + (Math.random()-0.5)*footprint*0.6, cz + footprint/2 + 1.7, Math.random() > 0.5 ? 0 : Math.PI);
+    addRandomRetroCar(cx + (Math.random()-0.5)*footprint*0.6, cz + footprint/2 + 1.7, Math.random() > 0.5 ? 0 : Math.PI);
+    if (Math.random() < 0.4) addRandomRetroBike(cx + (Math.random()-0.5)*footprint*0.6, cz - footprint/2 - 1.7, Math.random() > 0.5 ? 0 : Math.PI);
 
     const id = 'balloon_' + (idCounter++);
     balloonSpots.push({ id, x: cx + (Math.random()-0.5)*4, z: cz + (Math.random()-0.5)*4 });
@@ -2062,6 +2273,12 @@ let riverBoat = null, riverNet = null, riverNetHang = null;
   [[96, -37], [97, -23], [108, -36], [109, -23]].forEach(([x, z]) => addBanana(x, z));
 })();
 
+/* showcase next to spawn */
+addRetroCar(-4, 2.3, 0, 'ambassador', 0xf2f0e6, { beacon: true });
+addRetroCar(-8, -2.3, Math.PI, 'padmini', 0xe8b923, { roof: 0x1a1a1a });
+addRetroBike(4, 2.3, 0, 'bullet', 0x1f2a44);
+addRetroBike(6.5, -2.3, Math.PI, 'jawa', 0x7a1f1f);
+addRetroBike(2, -2.3, Math.PI, 'chetak', 0x2f8f83);
 buildPalms();
 
 /* =========================================================
@@ -3080,7 +3297,7 @@ function findNearbyCar() {
   for (const id in cars) {
     const c = cars[id];
     const d = Math.hypot(c.group.position.x - myAvatar.position.x, c.group.position.z - myAvatar.position.z);
-    const reach = c.isPlane ? 4 : c.isCart ? 3.4 : 2.2;
+    const reach = c.isPlane ? 4 : c.isCart ? 3.4 : c.isBike ? 2.6 : 2.2;
     if (d < reach && d < nearestDist) { nearest = c; nearestDist = d; }
   }
   return nearest;
@@ -3157,8 +3374,8 @@ function updateDriving() {
   if (keys['d']) steer -= 1;
   throttle += -joyVec.y; steer += -joyVec.x;
 
-  const cart = !!c.isCart;
-  const accel = cart ? 0.006 : 0.012, maxSpeed = cart ? 0.13 : 0.32, friction = 0.985, turnRate = cart ? 0.03 : 0.045;
+  const cart = !!c.isCart, bike = !!c.isBike;
+  const accel = cart ? 0.006 : bike ? 0.015 : 0.012, maxSpeed = cart ? 0.13 : bike ? 0.36 : 0.32, friction = 0.985, turnRate = cart ? 0.03 : bike ? 0.055 : 0.045;
   carSpeed += throttle * accel;
   carSpeed *= friction;
   carSpeed = Math.max(-maxSpeed*0.6, Math.min(maxSpeed, carSpeed));
@@ -3169,6 +3386,7 @@ function updateDriving() {
   const forward = { x: Math.cos(c.group.rotation.y), z: -Math.sin(c.group.rotation.y) };
   c.group.position.x += forward.x * carSpeed;
   c.group.position.z += forward.z * carSpeed;
+  if (bike) c.group.rotation.x += (Math.max(-0.5, Math.min(0.5, -steer * carSpeed * 3)) - c.group.rotation.x) * 0.15;
   stats.distanceTraveled += Math.abs(carSpeed);
   if (c.group.position.x > RIVER.x1 - 2.5) { c.group.position.x = RIVER.x1 - 2.5; carSpeed = 0; }
 
@@ -3277,7 +3495,7 @@ function updateMovement() {
 
   const nearby = findNearbyCar();
   if (nearby && !nearby.occupiedBy) {
-    vehiclePrompt.textContent = nearby.isPlane ? 'Press E to fly ✈️' : nearby.isCart ? 'Press E to ride the kaalavandi 🐂' : 'Press E to enter';
+    vehiclePrompt.textContent = nearby.isPlane ? 'Press E to fly ✈️' : nearby.isCart ? 'Press E to ride the kaalavandi 🐂' : nearby.isBike ? 'Press E to ride 🏍️' : 'Press E to enter';
     vehiclePrompt.style.display = 'block';
   } else vehiclePrompt.style.display = 'none';
 
@@ -4456,6 +4674,7 @@ function animate() {
   if (myHealth <= 0 && !inHospital && !ambulance) document.getElementById('death-overlay').classList.add('open');
 
   keralaTick(t);
+  retroTick();
   const nowp = performance.now();
   tickAvatar(myAvatar, nowp); if (chayaNpc) tickAvatar(chayaNpc, nowp); if (milkmaid) tickAvatar(milkmaid, nowp); updatePeds(); updateSky(); updateFight(); PEDS.forEach(p => tickAvatar(p.g, nowp));
   updateAtmosphere();
