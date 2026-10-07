@@ -851,6 +851,7 @@
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
 <script src="/socket.io/socket.io.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
 <script>
@@ -1519,6 +1520,36 @@ function buildCycle(group, color) {   // 80s Hercules-style roadster with carrie
   [-1, 1].forEach(s => tube([-0.56, 0.34, s * 0.06], [-0.66, 0.72, s * 0.07], 0.01, chrome));
   return W;
 }
+/* ---- Real 3D vehicle models (GTA-style): drop .glb files in public/models/ ; falls back to the code-built vehicles if a file is missing ----
+   len = length in game units (avatar is ~1.7 tall). rotY = extra turn if a model faces the wrong way (try Math.PI or ±Math.PI/2). seat = [x, y] rider seat for bikes/cycles. */
+const VEHICLE_MODELS = {
+  car:   [{ url: 'models/car1.glb', len: 3.6 }, { url: 'models/car2.glb', len: 3.6 }, { url: 'models/car3.glb', len: 3.6 }],
+  bike:  [{ url: 'models/bike1.glb', len: 2.0, seat: [-0.2, 0.95] }],
+  cycle: [{ url: 'models/cycle1.glb', len: 1.8, seat: [-0.14, 1.0] }],
+};
+const _mdlCache = {};
+function loadModel(url) {
+  if (!THREE.GLTFLoader) return Promise.resolve(null);
+  return _mdlCache[url] || (_mdlCache[url] = new Promise(res => new THREE.GLTFLoader().load(url, g => res(g.scene), undefined, () => res(null))));
+}
+function upgradeToModel(c, kind) {
+  const list = VEHICLE_MODELS[kind]; if (!list || !list.length) return;
+  const e = list[Math.floor(Math.random() * list.length)];
+  loadModel(e.url).then(src => {
+    if (!src) return;
+    const m = src.clone(true), holder = new THREE.Group(); holder.add(m);
+    let b = new THREE.Box3().setFromObject(holder), sz = b.getSize(new THREE.Vector3());
+    holder.rotation.y = (sz.z > sz.x ? Math.PI / 2 : 0) + (e.rotY || 0); holder.updateMatrixWorld(true);
+    b = new THREE.Box3().setFromObject(holder); sz = b.getSize(new THREE.Vector3());
+    const k = e.len / Math.max(sz.x, sz.z), ctr = b.getCenter(new THREE.Vector3());
+    holder.scale.setScalar(k); holder.updateMatrixWorld(true);
+    b = new THREE.Box3().setFromObject(holder); ctr.copy(b.getCenter(new THREE.Vector3()));
+    holder.position.set(-ctr.x, -b.min.y, -ctr.z);
+    m.traverse(o => { if (o.isMesh) { o.castShadow = o.receiveShadow = true; } });
+    c.group.children.slice().forEach(ch => { ch.visible = false; });    // hide the code-built version
+    c.group.add(holder); c.wheels = null; c.seat = e.seat || null;
+  });
+}
 function addParkedCar(x, z, rotY) {
   const group = new THREE.Group();
   const color = carColors[Math.floor(Math.random()*carColors.length)];
@@ -1531,6 +1562,7 @@ function addParkedCar(x, z, rotY) {
 
   const id = 'car_' + (carIdCounter++);
   cars[id] = { id, group, occupiedBy: null, kind, wheels, rider: kind !== 'car' };
+  upgradeToModel(cars[id], kind);
   return id;
 }
 
@@ -3212,7 +3244,7 @@ let _ridePh = 0;
 function rideTick() {   // seat the player's avatar on the bike / cycle (seated pose, pedalling legs)
   const c = drivingCarId && cars[drivingCarId]; if (!c || !c.rider) return;
   const u = myAvatar.userData; if (!u || !u.legs) return;
-  const cy = c.kind === 'cycle', sx = cy ? -0.14 : -0.22, sy = cy ? 1.0 : 0.95, r = c.group.rotation.y; _ridePh += carSpeed * 9;
+  const cy = c.kind === 'cycle', sx = c.seat ? c.seat[0] : cy ? -0.14 : -0.22, sy = c.seat ? c.seat[1] : cy ? 1.0 : 0.95, r = c.group.rotation.y; _ridePh += carSpeed * 9;
   myAvatar.position.set(c.group.position.x + Math.cos(r) * sx, sy - 0.88, c.group.position.z - Math.sin(r) * sx);
   myAvatar.rotation.y = r + Math.PI / 2;
   const pd = cy ? Math.sin(_ridePh) * 0.5 : 0;
