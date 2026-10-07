@@ -558,6 +558,9 @@
     </div>
     <div id="account-pill"><span id="account-name">Guest</span><button id="account-action" type="button">Log in</button></div>
     <div id="balloon-pill"><i class="fa-solid fa-circle" style="border-radius:50%;"></i> 🎈 <span id="balloon-val">0</span></div>
+    <div id="cash-pill" style="background:#12301a;color:#fff;border-radius:20px;padding:6px 12px;font-weight:700;margin-left:6px">💵 <span id="cash-val">0</span></div>
+    <button onclick="document.getElementById('car-shop').style.display='block';renderCarShop()" style="margin-left:6px;border:0;border-radius:20px;padding:6px 12px;background:#e91e8c;color:#fff;font-weight:700;cursor:pointer">🚗 Car Shop</button>
+    <div id="car-shop" style="display:none;position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:min(380px,92vw);background:#1b1030;color:#fff;border-radius:16px;padding:16px;z-index:60"><div style="display:flex;justify-content:space-between"><b>🚗 Car Shop</b><span onclick="document.getElementById('car-shop').style.display='none'" style="cursor:pointer">✖</span></div><div id="car-shop-body"></div></div>
   </div>
 </div>
 
@@ -1533,9 +1536,9 @@ function loadModel(url) {
   if (!THREE.GLTFLoader) return Promise.resolve(null);
   return _mdlCache[url] || (_mdlCache[url] = new Promise(res => new THREE.GLTFLoader().load(url, g => res(g.scene), undefined, () => res(null))));
 }
-function upgradeToModel(c, kind) {
-  const list = VEHICLE_MODELS[kind]; if (!list || !list.length) return;
-  const e = list[Math.floor(Math.random() * list.length)];
+function upgradeToModel(c, kind, entry) {
+  const list = VEHICLE_MODELS[kind]; if (!entry && (!list || !list.length)) return;
+  const e = entry || list[Math.floor(Math.random() * list.length)];
   loadModel(e.url).then(src => {
     if (!src) return;
     const m = src.clone(true), holder = new THREE.Group(); holder.add(m);
@@ -1551,6 +1554,64 @@ function upgradeToModel(c, kind) {
     c.group.add(holder); c.wheels = null; c.seat = e.seat || null;
   });
 }
+/* ---- Phase 4: cash (game-only money) collected inside buildings + car shop (buy / rent). Cash lives in MySQL via server.js -> ajax/city_cash.php ---- */
+const DOORS = [], CASH_ROOM = { x: 8000, z: 8000 }, PILE_OFFS = [[-4, -4], [4, -4], [0, 0], [-4, 4], [4, 4], [0, -5]];
+const PREMIUM = { sport_coupe: { url: 'models/premium/sport-coupe.glb', len: 3.8 }, luxury_suv: { url: 'models/premium/luxury-suv.glb', len: 4.0 }, exec_sedan: { url: 'models/premium/exec-sedan.glb', len: 4.0 } };
+let inCashRoom = false, cashBack = null, myOwned = [], carCatalog = {}, nearDoor = null; const cashPileMeshes = [];
+(function buildCashRoom() {
+  const g = new THREE.Group(), M = c => new THREE.MeshStandardMaterial({ color: c, roughness: 0.8 }), add = (geo, mat, x, y, z) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); g.add(m); return m; };
+  g.position.set(CASH_ROOM.x, 0, CASH_ROOM.z); add(new THREE.BoxGeometry(18, 0.2, 18), M(0x8a6a48), 0, -0.1, 0);
+  [[0, -9, 18, 0.3], [0, 9, 18, 0.3], [-9, 0, 0.3, 18], [9, 0, 0.3, 18]].forEach(([x, z, w, d]) => add(new THREE.BoxGeometry(w, 4, d), M(0xe8dcc0), x, 2, z));
+  add(new THREE.CylinderGeometry(1.1, 1.1, 0.05, 20), M(0x2e7d32), 0, 0.03, 7);                       // exit pad
+  const L = new THREE.PointLight(0xfff0d0, 1.2, 40); L.position.set(0, 3.5, 0); g.add(L);
+  PILE_OFFS.forEach(([x, z]) => { const p = new THREE.Group(); p.add(new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.14, 0.34), M(0x2e8b3a))); p.add(new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.16, 0.36), M(0xf4f1de))); p.position.set(x, 0.1, z); g.add(p); cashPileMeshes.push(p); });
+  scene.add(g);
+})();
+const _cp = document.createElement('div'); _cp.style.cssText = 'position:fixed;left:50%;bottom:70px;transform:translateX(-50%);background:#222;color:#fff;padding:8px 16px;border-radius:20px;font:600 14px sans-serif;display:none;z-index:50';
+document.body.appendChild(_cp);
+setInterval(() => {
+  if (typeof myAvatar === 'undefined' || !myAvatar || (typeof drivingCarId !== 'undefined' && drivingCarId)) { _cp.style.display = 'none'; return; }
+  const p = myAvatar.position; let hint = '';
+  if (inCashRoom) {
+    p.x = Math.max(CASH_ROOM.x - 8.4, Math.min(CASH_ROOM.x + 8.4, p.x)); p.z = Math.max(CASH_ROOM.z - 8.4, Math.min(CASH_ROOM.z + 8.4, p.z));
+    cashPileMeshes.forEach((m, i) => { if (m.visible && Math.hypot(p.x - (CASH_ROOM.x + m.position.x), p.z - (CASH_ROOM.z + m.position.z)) < 1.3) { m.visible = false; socket.emit('collectCash', i); } });
+    if (Math.hypot(p.x - CASH_ROOM.x, p.z - (CASH_ROOM.z + 7)) < 2) hint = 'Press E to leave';
+  } else { nearDoor = DOORS.find(d => Math.hypot(p.x - d.x, p.z - d.z) < 2.2) || null; if (nearDoor) hint = 'Press E to go inside'; }
+  _cp.textContent = hint; _cp.style.display = hint ? 'block' : 'none';
+}, 150);
+document.addEventListener('keydown', e => {
+  if (e.code !== 'KeyE' || /INPUT|TEXTAREA/.test(document.activeElement.tagName) || (typeof drivingCarId !== 'undefined' && drivingCarId)) return;
+  const p = myAvatar.position;
+  if (inCashRoom) { if (Math.hypot(p.x - CASH_ROOM.x, p.z - (CASH_ROOM.z + 7)) < 2) { inCashRoom = false; p.set(cashBack.x, 0, cashBack.z + 1.5); } }
+  else if (nearDoor && !(typeof findNearbyCar === 'function' && findNearbyCar())) { if (!window._loggedIn) { showToast('Log in to collect cash'); return; } cashBack = { x: p.x, z: p.z }; inCashRoom = true; p.set(CASH_ROOM.x, 0, CASH_ROOM.z + 6); }
+});
+function spawnOwnedCar(carId) {
+  const o = myOwned.find(o => o.car_id === carId && (!o.until_ts || o.until_ts * 1000 > Date.now())); if (!o) { showToast('Rental expired or not owned'); return; }
+  if (window._ownCar && cars[window._ownCar] && !cars[window._ownCar].occupiedBy) { scene.remove(cars[window._ownCar].group); delete cars[window._ownCar]; }
+  const g = new THREE.Group(), W = buildRetroCar(g, 0x1f2a44), r = myAvatar.rotation.y, p = myAvatar.position;
+  g.position.set(p.x + Math.sin(r) * 3, 0, p.z + Math.cos(r) * 3); g.rotation.y = r - Math.PI / 2; scene.add(g);
+  const id = window._ownCar = 'own_' + carId + '_' + (carIdCounter++); cars[id] = { id, group: g, occupiedBy: null, kind: 'car', wheels: W, rider: false };
+  upgradeToModel(cars[id], 'car', PREMIUM[carId]); document.getElementById('car-shop').style.display = 'none'; showToast('🚗 Your car is parked next to you - press E');
+}
+function buyCar(id, mode) { if (!window._loggedIn) { showToast('Log in first'); return; } socket.emit('buyCar', { carId: id, mode }); }
+function renderCarShop() {
+  document.getElementById('car-shop-body').innerHTML = Object.entries(carCatalog).map(([id, c]) => {
+    const mine = myOwned.filter(o => o.car_id === id), own = mine.some(o => !o.until_ts), rent = mine.find(o => o.until_ts && o.until_ts * 1000 > Date.now());
+    const btn = (t, f) => `<button onclick="${f}" style="margin:3px;padding:6px 10px;border:0;border-radius:8px;background:#e91e8c;color:#fff;cursor:pointer">${t}</button>`;
+    return `<div style="padding:10px 0;border-bottom:1px solid #444"><b>${c.name}</b><br>${own ? btn('Drive (owned)', `spawnOwnedCar('${id}')`) : btn('Buy 💵' + c.price.toLocaleString(), `buyCar('${id}','buy')`)}${rent ? btn('Drive (rented ' + Math.ceil((rent.until_ts * 1000 - Date.now()) / 60000) + ' min left)', `spawnOwnedCar('${id}')`) : (own ? '' : btn('Rent 30 min 💵' + c.rent.toLocaleString(), `buyCar('${id}','rent')`))}</div>`;
+  }).join('') || 'Loading…';
+}
+window.addEventListener('load', () => {
+  socket.on('cashState', s => {
+    if (s.cash !== undefined) document.getElementById('cash-val').textContent = Number(s.cash).toLocaleString();
+    if (s.cars) myOwned = s.cars; window._loggedIn = !s.guest;
+    if (s.gained) showToast('💵 +' + s.gained);
+    if (s.error) showToast(s.error === 'funds' ? 'Not enough cash' : s.error === 'owned' ? 'You already own this car' : 'Something went wrong');
+    if (s.purchased) showToast('🚗 ' + (carCatalog[s.purchased] || {}).name + ' purchased!'); renderCarShop();
+  });
+  socket.on('carCatalog', c => { carCatalog = c; renderCarShop(); });
+  socket.on('cashPiles', a => a.forEach((v, i) => { if (cashPileMeshes[i]) cashPileMeshes[i].visible = !!v; }));
+});
 function addParkedCar(x, z, rotY) {
   const group = new THREE.Group();
   const color = carColors[Math.floor(Math.random()*carColors.length)];
@@ -1639,7 +1700,7 @@ function addKeralaHouse(cx, cz, footprint) {
   const sign = new THREE.Mesh(new THREE.PlaneGeometry(Math.min(4.4, w*0.8), 1.05),
     new THREE.MeshBasicMaterial({ map: SIGNS[Math.floor(Math.random()*SIGNS.length)] }));
   sign.position.set(cx, 3.15, fz + 0.02); scene.add(sign);
-  const door = new THREE.Mesh(new THREE.PlaneGeometry(1.3, 2.2), doorMat); door.position.set(cx, 1.35, fz); scene.add(door);
+  const door = new THREE.Mesh(new THREE.PlaneGeometry(1.3, 2.2), doorMat); door.position.set(cx, 1.35, fz); scene.add(door); DOORS.push({ x: cx, z: fz });
   [-1, 1].forEach(s => {
     const fr = new THREE.Mesh(new THREE.BoxGeometry(1.15, 1.25, 0.1), winFrameMat); fr.position.set(cx + s*w*0.32, 1.9, fz); scene.add(fr);
     const gl = new THREE.Mesh(new THREE.PlaneGeometry(0.85, 0.95), winGlassMat); gl.position.set(cx + s*w*0.32, 1.9, fz + 0.06); scene.add(gl);
