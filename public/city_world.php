@@ -1347,7 +1347,17 @@ function updateAtmosphere() {
   if (window.cloudMat) { cloudMat.color.copy(s.hor).lerp(new THREE.Color(0xffffff), 0.55).lerp(grey, R * 0.8).multiplyScalar(0.2 + 0.8 * Math.min(1, s.hi)); cloudMat.opacity = 0.9 - 0.2 * night + 0.1 * R; }
   if (window.BIRDS) BIRDS.visible = night < 0.6 && R < 0.8;
   // wet roads
-  if (window.ROAD_MAT) { ROAD_MAT.roughness = 0.95 - 0.7 * R; ROAD_MAT.color.copy(ROAD_BASE).multiplyScalar(1 - 0.45 * R); ROAD_MAT.envMapIntensity = 1.4 * R; }
+   if (window.ROAD_MAT) {
+    ROAD_MAT.roughness = 0.95 - 0.3 * R;                          // subtle wet, never mirror-white
+    ROAD_MAT.color.copy(ROAD_BASE).multiplyScalar(1 - 0.3 * R);   // slightly darker when wet
+    ROAD_MAT.envMapIntensity = 0.12 * R;                          // tiny reflection only
+  }
+  // cars/bikes: weaker sky reflection in rain
+  REFLECT.forEach(m => {
+    if (m === window.ROAD_MAT) return;
+    m.userData.baseEnv = m.userData.baseEnv ?? m.envMapIntensity;
+    m.envMapIntensity = m.userData.baseEnv * (1 - 0.5 * R);
+  });
   // rain
   rainMesh.visible = R > 0.02;
   if (rainMesh.visible) {
