@@ -1417,7 +1417,7 @@ function addStreetlight(x, z, faceInward) {
 }
 
 // --- Boxy toon car (angled windshield, headlight/taillight blocks, light hubcaps) ---
-const carColors = [0x2f5fd0, 0xd83c3c, 0xf2c230, 0x3fae55, 0x555a63, 0xffffff];
+const carColors = [0x2f5fd0, 0xd83c3c, 0xf2c230, 0x3fae55, 0x555a63, 0x8b1e3f, 0x1f2a44, 0xe07a1f];
 const cars = {}; // carId -> { id, group, occupiedBy }
 let carIdCounter = 0;
 
@@ -1438,7 +1438,7 @@ function _wheel(R, tr, rimMat, tyreMat, nSpoke) {
   return w;
 }
 function buildRetroCar(group, color) {
-  const paint = reflective(new THREE.MeshPhysicalMaterial({ color, clearcoat: 1, clearcoatRoughness: 0.06 }), 0.28, 0.55, 1.0);
+  const paint = reflective(new THREE.MeshPhysicalMaterial({ color, clearcoat: 0.3, clearcoatRoughness: 0.25 }), 0.42, 0.25, 0.4);
   const glass = reflective(new THREE.MeshStandardMaterial({ color: 0x1c2c3a, transparent: true, opacity: 0.6, side: THREE.DoubleSide }), 0.08, 0.3, 1.2);
   const hatch = Math.random() < 0.4;
   const chrome = reflective(new THREE.MeshStandardMaterial({ color: 0xd8dade, emissive: 0x3a3c40 }), 0.2, 0.7, 1.3);
@@ -1472,7 +1472,7 @@ function buildRetroCar(group, color) {
   return W;
 }
 function buildRetroBike(group, color) {
-  const paint = reflective(new THREE.MeshPhysicalMaterial({ color, clearcoat: 1, clearcoatRoughness: 0.05 }), 0.25, 0.6, 1.0);
+  const paint = reflective(new THREE.MeshPhysicalMaterial({ color, clearcoat: 0.3, clearcoatRoughness: 0.25 }), 0.4, 0.3, 0.45);
   const chrome = reflective(new THREE.MeshStandardMaterial({ color: 0xd8dade, emissive: 0x3a3c40 }), 0.2, 0.7, 1.3);
   const steel = new THREE.MeshStandardMaterial({ color: 0x2a2a2e, metalness: 0.6, roughness: 0.45 }), rubber = new THREE.MeshStandardMaterial({ color: 0x141414, roughness: 0.9 });
   const seatM = new THREE.MeshStandardMaterial({ color: 0x3b2417, roughness: 0.6 });
@@ -1499,7 +1499,7 @@ function buildRetroBike(group, color) {
 
 function _tubeFn(group) { return (a, b, r, m) => { const A = new THREE.Vector3(...a), B = new THREE.Vector3(...b), d = B.clone().sub(A); const t = new THREE.Mesh(new THREE.CylinderGeometry(r, r, d.length(), 8), m); t.position.copy(A).add(B).multiplyScalar(0.5); t.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize()); group.add(t); return t; }; }
 function buildCycle(group, color) {   // 80s Hercules-style roadster with carrier, bell and lamp
-  const paint = reflective(new THREE.MeshPhysicalMaterial({ color, clearcoat: 1, clearcoatRoughness: 0.08 }), 0.3, 0.5, 1.0);
+  const paint = reflective(new THREE.MeshPhysicalMaterial({ color, clearcoat: 0.3, clearcoatRoughness: 0.25 }), 0.4, 0.3, 0.45);
   const chrome = reflective(new THREE.MeshStandardMaterial({ color: 0xd8dade, emissive: 0x3a3c40 }), 0.2, 0.7, 1.3);
   const rubber = new THREE.MeshStandardMaterial({ color: 0x141414, roughness: 0.9 }), blk = new THREE.MeshStandardMaterial({ color: 0x1a1512, roughness: 0.6 });
   const add = (geo, mat, x, y, z) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); group.add(m); return m; }, tube = _tubeFn(group), W = [];
