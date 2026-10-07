@@ -1432,16 +1432,16 @@ function _extrude(pts, depth, bev) {
 function _wheel(R, tr, rimMat, tyreMat, nSpoke) {
   const w = new THREE.Group();
   w.add(new THREE.Mesh(CG('ty' + R + tr, () => new THREE.TorusGeometry(R - tr, tr, 12, 28)), tyreMat));
-  const rim = new THREE.Mesh(CG('rm' + R, () => new THREE.CylinderGeometry(R - tr * 1.1, R - tr * 1.1, tr * 1.3, 24)), rimMat); rim.rotation.x = Math.PI / 2; w.add(rim);
-  for (let i = 0; i < nSpoke; i++) { const sp = new THREE.Mesh(CG('sp' + R, () => new THREE.BoxGeometry(R * 1.55, 0.018, 0.018)), rimMat); sp.rotation.z = i / nSpoke * Math.PI; w.add(sp); }
-  const hub = new THREE.Mesh(CG('hb' + R, () => new THREE.CylinderGeometry(R * 0.2, R * 0.2, tr * 1.8, 12)), rimMat); hub.rotation.x = Math.PI / 2; w.add(hub);
+  const rim = new THREE.Mesh(CG('rm' + R, () => new THREE.CylinderGeometry(R - tr * 1.1, R - tr * 1.1, tr * 2.1, 24)), rimMat); rim.rotation.x = Math.PI / 2; w.add(rim);
+  for (let i = 0; i < nSpoke; i++) { const sp = new THREE.Mesh(CG('sp' + R, () => new THREE.BoxGeometry(R * 1.5, 0.03, 0.012)), tyreMat); sp.rotation.z = i / nSpoke * Math.PI; sp.position.z = tr * 1.1; w.add(sp); }
+  const hub = new THREE.Mesh(CG('hb' + R, () => new THREE.CylinderGeometry(R * 0.2, R * 0.2, tr * 2.4, 12)), rimMat); hub.rotation.x = Math.PI / 2; w.add(hub);
   return w;
 }
 function buildRetroCar(group, color) {
   const paint = reflective(new THREE.MeshPhysicalMaterial({ color, clearcoat: 1, clearcoatRoughness: 0.06 }), 0.28, 0.55, 1.0);
-  const glass = reflective(new THREE.MeshPhysicalMaterial({ color: 0x0c141c, clearcoat: 1, transparent: true, opacity: 0.55 }), 0.04, 0.9, 1.5); glass.depthWrite = false;
+  const glass = reflective(new THREE.MeshStandardMaterial({ color: 0x1c2c3a, transparent: true, opacity: 0.6, side: THREE.DoubleSide }), 0.08, 0.3, 1.2);
   const hatch = Math.random() < 0.4;
-  const chrome = reflective(new THREE.MeshStandardMaterial({ color: 0xe8e8ea }), 0.12, 1.0, 1.3);
+  const chrome = reflective(new THREE.MeshStandardMaterial({ color: 0xd8dade, emissive: 0x3a3c40 }), 0.2, 0.7, 1.3);
   const rubber = new THREE.MeshStandardMaterial({ color: 0x151515, roughness: 0.9 }), dark = new THREE.MeshStandardMaterial({ color: 0x0b0b0b, roughness: 0.7 });
   const add = (geo, mat, x, y, z) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); group.add(m); return m; };
   const box = (w, h, d) => CG('b' + [w, h, d], () => new THREE.BoxGeometry(w, h, d));
@@ -1449,8 +1449,8 @@ function buildRetroCar(group, color) {
   add(hatch ? CG('gh2', () => _extrude([[0.3, 0.76], [0.1, 1.15], [-0.78, 1.17], [-1.0, 0.78]], 0.78, 0.025)) : CG('gh', () => _extrude([[0.3, 0.76], [0.08, 1.17], [-0.6, 1.19], [-0.88, 0.76]], 0.78, 0.025)), glass, 0, 0, 0);
   add(box(hatch ? 0.9 : 0.74, 0.045, 0.86), paint, hatch ? -0.34 : -0.26, hatch ? 1.18 : 1.2, 0);                                          // roof
   [-1, 1].forEach(s => {
-    add(box(0.07, 0.42, 0.05), paint, -0.8, 0.98, s * 0.4).rotation.z = 0.5;                   // C-pillars
-    add(box(0.05, 0.4, 0.04), paint, 0.2, 0.97, s * 0.4).rotation.z = -0.5;                    // A-pillars
+    add(box(0.07, 0.42, 0.05), paint, hatch ? -0.89 : -0.74, 0.98, s * 0.4).rotation.z = -0.5;                   // C-pillars
+    add(box(0.05, 0.4, 0.04), paint, 0.19, 0.97, s * 0.4).rotation.z = 0.5;                    // A-pillars
     const hl = add(CG('hl', () => new THREE.SphereGeometry(0.09, 14, 10)), new THREE.MeshStandardMaterial({ color: 0xfff4cf, emissive: 0xffe9a8, emissiveIntensity: 0.8 }), 1.06, 0.56, s * 0.33); hl.scale.set(0.5, 1, 1);
     const ring = add(CG('hr', () => new THREE.TorusGeometry(0.1, 0.018, 8, 18)), chrome, 1.08, 0.56, s * 0.33); ring.rotation.y = Math.PI / 2;
     add(box(0.05, 0.1, 0.22), new THREE.MeshStandardMaterial({ color: 0xc1121f, emissive: 0xff1a1a, emissiveIntensity: 0.55 }), -1.1, 0.6, s * 0.34);   // tail lamps
@@ -1473,7 +1473,7 @@ function buildRetroCar(group, color) {
 }
 function buildRetroBike(group, color) {
   const paint = reflective(new THREE.MeshPhysicalMaterial({ color, clearcoat: 1, clearcoatRoughness: 0.05 }), 0.25, 0.6, 1.0);
-  const chrome = reflective(new THREE.MeshStandardMaterial({ color: 0xe8e8ea }), 0.12, 1.0, 1.3);
+  const chrome = reflective(new THREE.MeshStandardMaterial({ color: 0xd8dade, emissive: 0x3a3c40 }), 0.2, 0.7, 1.3);
   const steel = new THREE.MeshStandardMaterial({ color: 0x2a2a2e, metalness: 0.6, roughness: 0.45 }), rubber = new THREE.MeshStandardMaterial({ color: 0x141414, roughness: 0.9 });
   const seatM = new THREE.MeshStandardMaterial({ color: 0x3b2417, roughness: 0.6 });
   const add = (geo, mat, x, y, z) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); group.add(m); return m; };
@@ -1500,7 +1500,7 @@ function buildRetroBike(group, color) {
 function _tubeFn(group) { return (a, b, r, m) => { const A = new THREE.Vector3(...a), B = new THREE.Vector3(...b), d = B.clone().sub(A); const t = new THREE.Mesh(new THREE.CylinderGeometry(r, r, d.length(), 8), m); t.position.copy(A).add(B).multiplyScalar(0.5); t.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize()); group.add(t); return t; }; }
 function buildCycle(group, color) {   // 80s Hercules-style roadster with carrier, bell and lamp
   const paint = reflective(new THREE.MeshPhysicalMaterial({ color, clearcoat: 1, clearcoatRoughness: 0.08 }), 0.3, 0.5, 1.0);
-  const chrome = reflective(new THREE.MeshStandardMaterial({ color: 0xe8e8ea }), 0.12, 1.0, 1.3);
+  const chrome = reflective(new THREE.MeshStandardMaterial({ color: 0xd8dade, emissive: 0x3a3c40 }), 0.2, 0.7, 1.3);
   const rubber = new THREE.MeshStandardMaterial({ color: 0x141414, roughness: 0.9 }), blk = new THREE.MeshStandardMaterial({ color: 0x1a1512, roughness: 0.6 });
   const add = (geo, mat, x, y, z) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); group.add(m); return m; }, tube = _tubeFn(group), W = [];
   [0.56, -0.56].forEach(x => { const w = _wheel(0.34, 0.03, chrome, rubber, 14); w.position.set(x, 0.34, 0); group.add(w); W.push({ m: w, R: 0.34 });
