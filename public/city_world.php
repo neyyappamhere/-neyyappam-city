@@ -1439,14 +1439,15 @@ function _wheel(R, tr, rimMat, tyreMat, nSpoke) {
 }
 function buildRetroCar(group, color) {
   const paint = reflective(new THREE.MeshPhysicalMaterial({ color, clearcoat: 1, clearcoatRoughness: 0.06 }), 0.28, 0.55, 1.0);
-  const glass = reflective(new THREE.MeshPhysicalMaterial({ color: 0x0c141c, clearcoat: 1 }), 0.04, 0.9, 1.5);
+  const glass = reflective(new THREE.MeshPhysicalMaterial({ color: 0x0c141c, clearcoat: 1, transparent: true, opacity: 0.55 }), 0.04, 0.9, 1.5); glass.depthWrite = false;
+  const hatch = Math.random() < 0.4;
   const chrome = reflective(new THREE.MeshStandardMaterial({ color: 0xe8e8ea }), 0.12, 1.0, 1.3);
   const rubber = new THREE.MeshStandardMaterial({ color: 0x151515, roughness: 0.9 }), dark = new THREE.MeshStandardMaterial({ color: 0x0b0b0b, roughness: 0.7 });
   const add = (geo, mat, x, y, z) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); group.add(m); return m; };
   const box = (w, h, d) => CG('b' + [w, h, d], () => new THREE.BoxGeometry(w, h, d));
   add(CG('tub', () => _extrude([[-1.05, 0.28], [1.05, 0.28], [1.08, 0.5], [1.0, 0.66], [0.8, 0.74, 0.5, 0.76], [0.28, 0.78], [-0.7, 0.78], [-1.0, 0.76, -1.08, 0.62], [-1.08, 0.4]], 0.88, 0.06)), paint, 0, 0, 0);
-  add(CG('gh', () => _extrude([[0.3, 0.76], [0.08, 1.17], [-0.6, 1.19], [-0.88, 0.76]], 0.78, 0.025)), glass, 0, 0, 0);
-  add(box(0.74, 0.045, 0.86), paint, -0.26, 1.2, 0);                                          // roof
+  add(hatch ? CG('gh2', () => _extrude([[0.3, 0.76], [0.1, 1.15], [-0.78, 1.17], [-1.0, 0.78]], 0.78, 0.025)) : CG('gh', () => _extrude([[0.3, 0.76], [0.08, 1.17], [-0.6, 1.19], [-0.88, 0.76]], 0.78, 0.025)), glass, 0, 0, 0);
+  add(box(hatch ? 0.9 : 0.74, 0.045, 0.86), paint, hatch ? -0.34 : -0.26, hatch ? 1.18 : 1.2, 0);                                          // roof
   [-1, 1].forEach(s => {
     add(box(0.07, 0.42, 0.05), paint, -0.8, 0.98, s * 0.4).rotation.z = 0.5;                   // C-pillars
     add(box(0.05, 0.4, 0.04), paint, 0.2, 0.97, s * 0.4).rotation.z = -0.5;                    // A-pillars
@@ -1461,8 +1462,14 @@ function buildRetroCar(group, color) {
   add(box(0.04, 0.14, 0.36), dark, 1.1, 0.55, 0);                                              // grille
   add(box(0.02, 0.1, 0.28), new THREE.MeshStandardMaterial({ color: 0xf2f2f2 }), 1.14, 0.38, 0);      // plate
   add(box(1.9, 0.08, 0.8), dark, 0, 0.26, 0);                                                  // underbody
-  const rimMat = chrome;
-  [[0.68, 0.46], [0.68, -0.46], [-0.68, 0.46], [-0.68, -0.46]].forEach(([x, z]) => { const w = _wheel(0.285, 0.085, rimMat, rubber, 5); w.position.set(x, 0.285, z); group.add(w); });
+  const seatM = new THREE.MeshStandardMaterial({ color: 0x4a3a2c, roughness: 0.8 });                // interior: seats, dash, steering wheel
+  [0.2, -0.2].forEach(z => { add(box(0.34, 0.14, 0.3), seatM, -0.18, 0.88, z); add(box(0.08, 0.34, 0.3), seatM, -0.36, 1.0, z); });
+  add(box(0.5, 0.2, 0.34), seatM, -0.62, 0.9, 0); add(box(0.2, 0.12, 0.8), dark, 0.2, 0.86, 0);
+  add(CG('sw', () => new THREE.TorusGeometry(0.1, 0.012, 6, 16)), dark, 0.1, 0.98, 0.2).rotation.y = Math.PI / 2 - 0.35;
+  [1, -1].forEach(sx => [1, -1].forEach(sz => { const ar = add(CG('ar', () => new THREE.CylinderGeometry(0.33, 0.33, 0.03, 20)), dark, sx * 0.68, 0.285, sz * 0.502); ar.rotation.x = Math.PI / 2; }));
+  const W = [], rimMat = chrome;
+  [[0.68, 0.46], [0.68, -0.46], [-0.68, 0.46], [-0.68, -0.46]].forEach(([x, z]) => { const w = _wheel(0.285, 0.085, rimMat, rubber, 5); w.position.set(x, 0.285, z); group.add(w); W.push({ m: w, R: 0.285 }); });
+  return W;
 }
 function buildRetroBike(group, color) {
   const paint = reflective(new THREE.MeshPhysicalMaterial({ color, clearcoat: 1, clearcoatRoughness: 0.05 }), 0.25, 0.6, 1.0);
@@ -1471,7 +1478,7 @@ function buildRetroBike(group, color) {
   const seatM = new THREE.MeshStandardMaterial({ color: 0x3b2417, roughness: 0.6 });
   const add = (geo, mat, x, y, z) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); group.add(m); return m; };
   const tube = (a, b, r, m) => { const A = new THREE.Vector3(...a), B = new THREE.Vector3(...b), d = B.clone().sub(A); const t = new THREE.Mesh(new THREE.CylinderGeometry(r, r, d.length(), 8), m); t.position.copy(A).add(B).multiplyScalar(0.5); t.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize()); group.add(t); return t; };
-  [0.7, -0.7].forEach(x => { const w = _wheel(0.34, 0.06, chrome, rubber, 8); w.position.set(x, 0.34, 0); group.add(w); });
+  const W = []; [0.7, -0.7].forEach(x => { const w = _wheel(0.34, 0.06, chrome, rubber, 8); w.position.set(x, 0.34, 0); group.add(w); W.push({ m: w, R: 0.34 }); });
   [-1, 1].forEach(s => tube([0.7, 0.34, s * 0.07], [0.52, 0.98, s * 0.09], 0.02, chrome));       // front forks
   tube([0.52, 0.98, -0.12], [0.52, 0.98, 0.12], 0.016, steel);
   add(new THREE.CylinderGeometry(0.016, 0.016, 0.7, 8), steel, 0.5, 1.03, 0).rotation.x = Math.PI / 2;     // handlebar
@@ -1484,22 +1491,46 @@ function buildRetroBike(group, color) {
   const eng = add(new THREE.BoxGeometry(0.34, 0.3, 0.26), steel, 0.12, 0.45, 0);
   for (let i = 0; i < 4; i++) add(new THREE.BoxGeometry(0.34, 0.015, 0.34), steel, 0.12, 0.58 + i * 0.035, 0);   // cooling fins
   add(new THREE.CylinderGeometry(0.05, 0.065, 0.95, 12), chrome, -0.45, 0.28, 0.17).rotation.z = Math.PI / 2 - 0.08;   // exhaust
-  [-1, 1].forEach(s => { const fd = add(new THREE.TorusGeometry(0.38, 0.03, 6, 16, 2.4), paint, 0.7, 0.34, s * 0); fd.rotation.z = 0.35; fd.scale.set(1, 1, 1); });
+  [0.7, -0.7].forEach(x => { const fd = add(new THREE.TorusGeometry(0.4, 0.025, 6, 18, 2.2), paint, x, 0.34, 0); fd.rotation.z = Math.PI / 2 - 1.1; });
   add(new THREE.BoxGeometry(0.06, 0.05, 0.1), new THREE.MeshStandardMaterial({ color: 0xc1121f, emissive: 0xff1a1a, emissiveIntensity: 0.6 }), -0.82, 0.66, 0);
   tube([0.12, 0.2, 0.2], [0.12, 0.2, -0.2], 0.012, steel);                                      // foot-peg bar
+  return W;
 }
 
+function _tubeFn(group) { return (a, b, r, m) => { const A = new THREE.Vector3(...a), B = new THREE.Vector3(...b), d = B.clone().sub(A); const t = new THREE.Mesh(new THREE.CylinderGeometry(r, r, d.length(), 8), m); t.position.copy(A).add(B).multiplyScalar(0.5); t.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize()); group.add(t); return t; }; }
+function buildCycle(group, color) {   // 80s Hercules-style roadster with carrier, bell and lamp
+  const paint = reflective(new THREE.MeshPhysicalMaterial({ color, clearcoat: 1, clearcoatRoughness: 0.08 }), 0.3, 0.5, 1.0);
+  const chrome = reflective(new THREE.MeshStandardMaterial({ color: 0xe8e8ea }), 0.12, 1.0, 1.3);
+  const rubber = new THREE.MeshStandardMaterial({ color: 0x141414, roughness: 0.9 }), blk = new THREE.MeshStandardMaterial({ color: 0x1a1512, roughness: 0.6 });
+  const add = (geo, mat, x, y, z) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); group.add(m); return m; }, tube = _tubeFn(group), W = [];
+  [0.56, -0.56].forEach(x => { const w = _wheel(0.34, 0.03, chrome, rubber, 14); w.position.set(x, 0.34, 0); group.add(w); W.push({ m: w, R: 0.34 });
+    const fd = add(new THREE.TorusGeometry(0.375, 0.012, 6, 18, 2.2), paint, x, 0.34, 0); fd.rotation.z = Math.PI / 2 - 1.1; });
+  const BB = [0, 0.3, 0], ST = [-0.13, 0.92, 0], HT = [0.44, 0.88, 0], HB = [0.47, 0.72, 0];
+  tube(BB, ST, 0.02, paint); tube(ST, HT, 0.02, paint); tube(BB, HB, 0.024, paint); tube(HT, HB, 0.028, paint);
+  [-1, 1].forEach(s => { tube(ST, [-0.56, 0.34, s * 0.06], 0.014, paint); tube(BB, [-0.56, 0.34, s * 0.06], 0.014, paint); tube(HB, [0.56, 0.34, s * 0.05], 0.016, chrome);
+    add(new THREE.BoxGeometry(0.09, 0.02, 0.05), blk, s * 0.1 * 0 + 0.0, 0.3 + s * 0.1, s * 0.12);                           // pedals
+    add(new THREE.CylinderGeometry(0.02, 0.022, 0.12, 8), rubber, 0.4, 1.03, s * 0.3).rotation.x = Math.PI / 2; });          // grips
+  tube(HT, [0.4, 1.0, 0], 0.018, chrome); add(new THREE.CylinderGeometry(0.014, 0.014, 0.62, 8), chrome, 0.4, 1.02, 0).rotation.x = Math.PI / 2;
+  add(new THREE.SphereGeometry(0.035, 8, 6), chrome, 0.42, 1.08, 0.16);                                                       // bell
+  add(new THREE.SphereGeometry(0.05, 10, 8), new THREE.MeshStandardMaterial({ color: 0xfff4cf, emissive: 0xffe9a8, emissiveIntensity: 0.8 }), 0.52, 0.92, 0);
+  tube(ST, [-0.14, 1.0, 0], 0.016, chrome); add(new THREE.SphereGeometry(0.17, 12, 8), blk, -0.16, 1.02, 0).scale.set(1.4, 0.3, 0.8);   // saddle
+  add(new THREE.TorusGeometry(0.09, 0.012, 6, 18), chrome, 0, 0.3, 0.05);                                                      // chainring
+  add(new THREE.BoxGeometry(0.34, 0.02, 0.17), paint, -0.66, 0.72, 0);                                                          // carrier
+  [-1, 1].forEach(s => tube([-0.56, 0.34, s * 0.06], [-0.66, 0.72, s * 0.07], 0.01, chrome));
+  return W;
+}
 function addParkedCar(x, z, rotY) {
   const group = new THREE.Group();
   const color = carColors[Math.floor(Math.random()*carColors.length)];
-  if (Math.random() < 0.3) buildRetroBike(group, color); else buildRetroCar(group, color);
+  const roll = Math.random(), kind = roll < 0.2 ? 'bike' : roll < 0.4 ? 'cycle' : 'car';
+  const wheels = kind === 'bike' ? buildRetroBike(group, color) : kind === 'cycle' ? buildCycle(group, color) : buildRetroCar(group, color);
 
   group.position.set(x, 0, z);
   group.rotation.y = rotY;
   scene.add(group);
 
   const id = 'car_' + (carIdCounter++);
-  cars[id] = { id, group, occupiedBy: null };
+  cars[id] = { id, group, occupiedBy: null, kind, wheels, rider: kind !== 'car' };
   return id;
 }
 
@@ -3140,7 +3171,7 @@ function enterVehicle(carId) {
   if (!c) return;
   drivingCarId = carId;
   carSpeed = 0;
-  myAvatar.visible = false;
+  myAvatar.visible = !!c.rider;
   vehiclePrompt.textContent = 'Press E to exit';
   vehiclePrompt.style.display = 'block';
   if (c.isPlane) {
@@ -3177,6 +3208,17 @@ function exitVehicle() {
   document.getElementById('controls-hint').textContent = 'WASD to move • Drag to look';
 }
 
+let _ridePh = 0;
+function rideTick() {   // seat the player's avatar on the bike / cycle (seated pose, pedalling legs)
+  const c = drivingCarId && cars[drivingCarId]; if (!c || !c.rider) return;
+  const u = myAvatar.userData; if (!u || !u.legs) return;
+  const cy = c.kind === 'cycle', sx = cy ? -0.14 : -0.22, sy = cy ? 1.0 : 0.95, r = c.group.rotation.y; _ridePh += carSpeed * 9;
+  myAvatar.position.set(c.group.position.x + Math.cos(r) * sx, sy - 0.88, c.group.position.z - Math.sin(r) * sx);
+  myAvatar.rotation.y = r + Math.PI / 2;
+  const pd = cy ? Math.sin(_ridePh) * 0.5 : 0;
+  u.legs[0].rotation.x = -1.15 + pd; u.legs[1].rotation.x = -1.15 - pd; u.knees[0].rotation.x = 1.2 - pd * 0.8; u.knees[1].rotation.x = 1.2 + pd * 0.8;
+  u.arms[0].rotation.x = u.arms[1].rotation.x = -1.15; u.arms[0].rotation.z = -0.15; u.arms[1].rotation.z = 0.15; u.body.rotation.x = 0.18;
+}
 function updateDriving() {
   const c = cars[drivingCarId];
   if (!c) { drivingCarId = null; return; }
@@ -3190,7 +3232,8 @@ function updateDriving() {
   throttle += -joyVec.y; steer += -joyVec.x;
 
   const cart = !!c.isCart;
-  const accel = cart ? 0.006 : 0.012, maxSpeed = cart ? 0.13 : 0.32, friction = 0.985, turnRate = cart ? 0.03 : 0.045;
+  const cyc = c.kind === 'cycle', bk = c.kind === 'bike';
+  const accel = cart || cyc ? 0.006 : bk ? 0.014 : 0.012, maxSpeed = cart ? 0.13 : cyc ? 0.15 : bk ? 0.38 : 0.32, friction = 0.985, turnRate = cart ? 0.03 : (cyc || bk) ? 0.05 : 0.045;
   carSpeed += throttle * accel;
   carSpeed *= friction;
   carSpeed = Math.max(-maxSpeed*0.6, Math.min(maxSpeed, carSpeed));
@@ -4489,7 +4532,7 @@ function animate() {
 
   keralaTick(t);
   const nowp = performance.now();
-  tickAvatar(myAvatar, nowp); if (chayaNpc) tickAvatar(chayaNpc, nowp); if (milkmaid) tickAvatar(milkmaid, nowp); updatePeds(); updateSky(); updateFight(); PEDS.forEach(p => tickAvatar(p.g, nowp));
+  tickAvatar(myAvatar, nowp); rideTick(); if (chayaNpc) tickAvatar(chayaNpc, nowp); if (milkmaid) tickAvatar(milkmaid, nowp); updatePeds(); updateSky(); updateFight(); PEDS.forEach(p => tickAvatar(p.g, nowp));
   updateAtmosphere();
   updateWaypointReadout();
   if (waypointBeacon.visible) waypointBeacon.position.y = 1.2 + Math.sin(t*3)*0.15;
@@ -4508,6 +4551,11 @@ function animate() {
       c.group.position.lerp(new THREE.Vector3(c.target.x, c.target.y, c.target.z), 0.25);
       c.group.rotation.y = c.target.rotY;
     }
+  });
+  Object.values(cars).forEach(c => {   // spin wheels by distance rolled
+    if (!c.wheels) return; const p = c.group.position;
+    if (c._wx !== undefined) { const dx = p.x - c._wx, dz = p.z - c._wz, r = c.group.rotation.y, d = Math.hypot(dx, dz) * (dx * Math.cos(r) - dz * Math.sin(r) >= 0 ? 1 : -1); if (d) c.wheels.forEach(w => w.m.rotation.z -= d / w.R); }
+    c._wx = p.x; c._wz = p.z;
   });
   renderer.render(scene, camera);
 }
