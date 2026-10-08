@@ -437,6 +437,31 @@ async function creditRealAccount(uid, amount) {
   }
 }
 
+// CASH + GARAGE: game-only money saved in MySQL through ajax/city_cash.php (balloons are untouched).
+const CASH_ENDPOINT = process.env.CASH_ENDPOINT || 'https://neyyappam.com/ajax/city_cash.php';
+const CASH_ROOM = { x: 8000, z: 8000 };   // must match the client
+const CASH_PILES = [[-4, -4], [4, -4], [0, 0], [-4, 4], [4, 4], [0, -5]].map(([dx, dz], i) => ({ i, x: CASH_ROOM.x + dx, z: CASH_ROOM.z + dz, until: 0 }));
+const CAR_CATALOG = {   // generic names on purpose; price = buy, rent = 30 minutes. Tune freely.
+  sport_coupe: { name: 'Sport Coupe', price: 40000, rent: 2500 },
+  luxury_suv:  { name: 'Luxury SUV',  price: 35000, rent: 2200 },
+  exec_sedan:  { name: 'Executive Sedan', price: 30000, rent: 1800 },
+};
+async function cashApi(params) {
+  try {
+    const r = await fetch(CASH_ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ secret: SHARED_SECRET, ...params }) });
+    return await r.json();
+  } catch (e) { console.error('cash api failed:', e.message); return null; }
+}
+const pileFlags = () => CASH_PILES.map(p => (p.until > Date.now() ? 0 : 1));
+async function cashLoad(socket) {
+  const p = players[socket.id];
+  socket.emit('carCatalog', CAR_CATALOG); socket.emit('cashPiles', pileFlags());
+  if (!p || !p.uid) { socket.emit('cashState', { cash: 0, cars: [], guest: true }); return; }
+  const s = await cashApi({ action: 'get', uid: p.uid });
+  if (s && !s.error) socket.emit('cashState', s);
+  else { console.error('[cash] load failed:', s); socket.emit('cashState', { cash: 0, cars: [], error: s ? s.error : 'unreachable' }); }
+}
+
 // Roles: real players can run the chayakkada or the milk stall (one player per role). While a role is
 // empty the client shows a stand-in character; as soon as a player takes it the stand-in disappears.
 const roles = { chayakkaran: null, karavakkari: null };
@@ -659,6 +684,7 @@ io.on('connection', (socket) => {
     socket.emit('radioState', radioPayload());
     socket.emit('treasureSpots', treasureSpots.filter(t => !claimedTreasures.has(t.id)));
     socket.to('space:public').emit('playerJoined', players[socket.id]);
+    cashLoad(socket);
   });
 
   // A guest logs in through the popup (or the token is refreshed): upgrade this connection without rejoining.
@@ -671,6 +697,7 @@ io.on('connection', (socket) => {
     if (wasGuest) p.balloons = a.balloons;      // keep the live balance on a token refresh
     socket.emit('authState', { loggedIn: true, name: p.name, username: p.username, balloons: p.balloons, upgraded: wasGuest });
     io.to(spaceRoom(p)).emit('playerRenamed', { id: socket.id, name: p.name, username: p.username });
+    cashLoad(socket);
   });
   socket.on('deauth', () => {
     const p = players[socket.id]; if (!p) return;
@@ -1066,6 +1093,25 @@ io.on('connection', (socket) => {
   socket.on('voice-offer', ({ target, offer }) => io.to(target).emit('voice-offer', { from: socket.id, offer }));
   socket.on('voice-answer', ({ target, answer }) => io.to(target).emit('voice-answer', { from: socket.id, answer }));
   socket.on('voice-ice', ({ target, candidate }) => io.to(target).emit('voice-ice', { from: socket.id, candidate }));
+
+  socket.on('collectCash', async (i) => {
+    const p = players[socket.id], pile = CASH_PILES[i];
+    if (!p || !p.uid || !pile || Date.now() < pile.until) return;
+    if (Math.hypot(p.x - pile.x, p.z - pile.z) > 3) return;           // must really be standing at it
+    pile.until = Date.now() + 40000;                                  // respawns after 40 s
+    const amt = 50 + Math.floor(Math.random() * 151);
+    const s = await cashApi({ action: 'earn', uid: p.uid, amount: amt });
+    if (s && !s.error) socket.emit('cashState', Object.assign(s, { gained: amt }));
+    else { pile.until = 0; console.error('[cash] earn failed:', s); socket.emit('cashState', { error: s ? s.error : 'unreachable' }); }
+    io.emit('cashPiles', pileFlags());
+  });
+  socket.on('buyCar', async ({ carId, mode } = {}) => {
+    const p = players[socket.id], c = CAR_CATALOG[carId];
+    if (!p || !p.uid || !c) return;
+    const rent = mode === 'rent';
+    const s = await cashApi({ action: 'buy', uid: p.uid, car_id: carId, amount: rent ? c.rent : c.price, until: rent ? Math.floor(Date.now() / 1000) + 1800 : 0 });
+    socket.emit('cashState', s ? Object.assign(s, s.error ? {} : { purchased: carId }) : { error: 'fail' });
+  });
 
   socket.on('disconnect', () => {
     leavePrivate(socket.id, 'disconnected');
