@@ -1583,7 +1583,7 @@ document.addEventListener('keydown', e => {
   if (e.code !== 'KeyE' || /INPUT|TEXTAREA/.test(document.activeElement.tagName) || (typeof drivingCarId !== 'undefined' && drivingCarId)) return;
   const p = myAvatar.position;
   if (inCashRoom) { if (Math.hypot(p.x - CASH_ROOM.x, p.z - (CASH_ROOM.z + 7)) < 2) { inCashRoom = false; p.set(cashBack.x, 0, cashBack.z + 1.5); } }
-  else if (nearDoor && !(typeof findNearbyCar === 'function' && findNearbyCar())) { if (!window._loggedIn) { showToast('Log in to collect cash'); return; } cashBack = { x: p.x, z: p.z }; inCashRoom = true; p.set(CASH_ROOM.x, 0, CASH_ROOM.z + 6); }
+  else if (nearDoor && !(typeof findNearbyCar === 'function' && findNearbyCar())) { if (window._loggedIn === false) { showToast('Log in to collect cash'); return; } cashBack = { x: p.x, z: p.z }; inCashRoom = true; p.set(CASH_ROOM.x, 0, CASH_ROOM.z + 6); }
 });
 function spawnOwnedCar(carId) {
   const o = myOwned.find(o => o.car_id === carId && (!o.until_ts || o.until_ts * 1000 > Date.now())); if (!o) { showToast('Rental expired or not owned'); return; }
@@ -1593,7 +1593,7 @@ function spawnOwnedCar(carId) {
   const id = window._ownCar = 'own_' + carId + '_' + (carIdCounter++); cars[id] = { id, group: g, occupiedBy: null, kind: 'car', wheels: W, rider: false };
   upgradeToModel(cars[id], 'car', PREMIUM[carId]); document.getElementById('car-shop').style.display = 'none'; showToast('🚗 Your car is parked next to you - press E');
 }
-function buyCar(id, mode) { if (!window._loggedIn) { showToast('Log in first'); return; } socket.emit('buyCar', { carId: id, mode }); }
+function buyCar(id, mode) { if (window._loggedIn === false) { showToast('Log in first'); return; } socket.emit('buyCar', { carId: id, mode }); }
 function renderCarShop() {
   document.getElementById('car-shop-body').innerHTML = Object.entries(carCatalog).map(([id, c]) => {
     const mine = myOwned.filter(o => o.car_id === id), own = mine.some(o => !o.until_ts), rent = mine.find(o => o.until_ts && o.until_ts * 1000 > Date.now());
@@ -1602,6 +1602,7 @@ function renderCarShop() {
   }).join('') || 'Loading…';
 }
 window.addEventListener('load', () => {
+  socket.on('authState', st => { if (st.loggedIn !== undefined) window._loggedIn = !!st.loggedIn; });   // same login state the rest of the game uses
   socket.on('cashState', s => {
     if (s.cash !== undefined) document.getElementById('cash-val').textContent = Number(s.cash).toLocaleString();
     if (s.cars) myOwned = s.cars; window._loggedIn = !s.guest;
