@@ -1253,7 +1253,7 @@ scene.add(sun); scene.add(sun.target);
    Everyone sees the same time/weather (derived from the wall clock).
    Tweak ATMO below. Test with ?time=0.5 (noon) ?time=0.8 (dusk) ?time=0 (night) ?rain=1
    ========================================================= */
-const ATMO = { dayMs: 20 * 60 * 1000, exposure: 1.0, rainBlockMs: 5 * 60 * 1000, rainChance: 0.3, envEveryMs: 12000 };
+const ATMO = { dayMs: 60 * 60 * 1000, exposure: 1.0, rainBlockMs: 5 * 60 * 1000, rainChance: 0.3, envEveryMs: 12000 };
 const _aq = new URLSearchParams(location.search);
 const SKY_KEYS = [
   { t: 0,    top: '#02030a', mid: '#0a1024', hor: '#1a1b33', fog: '#0b0e1c', sun: '#8fa4d8', si: 0.12, hi: 0.30 },
@@ -1274,14 +1274,14 @@ function skySample(t) {
 }
 function cityClock() {
   if (_aq.has('time')) return (((+_aq.get('time')) % 1) + 1) % 1;
-  // ~85% of each cycle is daytime (with sunrise/sunset), ~15% is night
-  const u = (Date.now() % ATMO.dayMs) / ATMO.dayMs;
-  return u < 0.85 ? 0.23 + (u / 0.85) * 0.60 : (0.83 + ((u - 0.85) / 0.15) * 0.40) % 1;
+  // 60-minute cycle: 55 minutes of day (with sunrise/sunset), 5 minutes of night
+  const u = (Date.now() % ATMO.dayMs) / ATMO.dayMs, f = 55 / 60;
+  return u < f ? 0.23 + (u / f) * 0.60 : (0.83 + ((u - f) / (1 - f)) * 0.40) % 1;
 }
 function rainTarget() {
   if (_aq.has('rain')) return +_aq.get('rain') ? 1 : 0;
-  const r = Math.sin(Math.floor(Date.now() / ATMO.rainBlockMs) * 12.9898) * 43758.5453;
-  return (r - Math.floor(r)) < ATMO.rainChance ? 1 : 0;
+  const m = (Date.now() % ATMO.dayMs) / 60000;   // minute within the hour: rain only from :25 to :30
+  return m >= 25 && m < 30 ? 1 : 0;
 }
 renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = ATMO.exposure;
 
@@ -1317,7 +1317,7 @@ const ROAD_BASE = new THREE.Color(0x55565c), GREY = new THREE.Color(0x8d959c);
 
 function updateAtmosphere() {
   const now = performance.now(), dt = Math.min(0.1, (now - _lastAt) / 1000); _lastAt = now;
-  const inPriv = !!privScene, T = inPriv ? 0.5 : cityClock();
+  const inPriv = !!privScene || !!window._inCash, T = inPriv ? 0.5 : cityClock();   // indoors (private rooms + cash rooms): bright, no rain
   rainAmt += (rainTarget() - rainAmt) * Math.min(1, dt * 0.25);
   const R = inPriv ? 0 : rainAmt, s = skySample(T);
   const lum = 0.35 + 0.65 * Math.min(1, s.hi), grey = GREY.clone().multiplyScalar(lum);
@@ -1582,8 +1582,8 @@ setInterval(() => {
 document.addEventListener('keydown', e => {
   if (e.code !== 'KeyE' || /INPUT|TEXTAREA/.test(document.activeElement.tagName) || (typeof drivingCarId !== 'undefined' && drivingCarId)) return;
   const p = myAvatar.position;
-  if (inCashRoom) { if (Math.hypot(p.x - CASH_ROOM.x, p.z - (CASH_ROOM.z + 7)) < 2) { inCashRoom = false; p.set(cashBack.x, 0, cashBack.z + 1.5); } }
-  else if (nearDoor && !(typeof findNearbyCar === 'function' && findNearbyCar())) { if (window._loggedIn === false) { showToast('Log in to collect cash'); return; } cashBack = { x: p.x, z: p.z }; inCashRoom = true; p.set(CASH_ROOM.x, 0, CASH_ROOM.z + 6); }
+  if (inCashRoom) { if (Math.hypot(p.x - CASH_ROOM.x, p.z - (CASH_ROOM.z + 7)) < 2) { inCashRoom = false; window._inCash = false; p.set(cashBack.x, 0, cashBack.z + 1.5); } }
+  else if (nearDoor && !(typeof findNearbyCar === 'function' && findNearbyCar())) { if (window._loggedIn === false) { showToast('Log in to collect cash'); return; } cashBack = { x: p.x, z: p.z }; inCashRoom = true; window._inCash = true; p.set(CASH_ROOM.x, 0, CASH_ROOM.z + 6); }
 });
 function spawnOwnedCar(carId) {
   const o = myOwned.find(o => o.car_id === carId && (!o.until_ts || o.until_ts * 1000 > Date.now())); if (!o) { showToast('Rental expired or not owned'); return; }
@@ -1607,7 +1607,7 @@ window.addEventListener('load', () => {
     if (s.cash !== undefined) document.getElementById('cash-val').textContent = Number(s.cash).toLocaleString();
     if (s.cars) myOwned = s.cars; window._loggedIn = !s.guest;
     if (s.gained) showToast('💵 +' + s.gained);
-    if (s.error) showToast(s.error === 'funds' ? 'Not enough cash' : s.error === 'owned' ? 'You already own this car' : 'Something went wrong');
+    if (s.error) showToast(s.error === 'funds' ? 'Not enough cash' : s.error === 'owned' ? 'You already own this car' : 'Cash server error: ' + s.error);
     if (s.purchased) showToast('🚗 ' + (carCatalog[s.purchased] || {}).name + ' purchased!'); renderCarShop();
   });
   socket.on('carCatalog', c => { carCatalog = c; renderCarShop(); });
