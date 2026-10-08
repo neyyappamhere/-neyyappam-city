@@ -1574,7 +1574,7 @@ setInterval(() => {
   const p = myAvatar.position; let hint = '';
   if (inCashRoom) {
     p.x = Math.max(CASH_ROOM.x - 8.4, Math.min(CASH_ROOM.x + 8.4, p.x)); p.z = Math.max(CASH_ROOM.z - 8.4, Math.min(CASH_ROOM.z + 8.4, p.z));
-    cashPileMeshes.forEach((m, i) => { if (m.visible && Math.hypot(p.x - (CASH_ROOM.x + m.position.x), p.z - (CASH_ROOM.z + m.position.z)) < 1.3) { m.visible = false; socket.emit('collectCash', i); } });
+    cashPileMeshes.forEach((m, i) => { if (m.visible && Math.hypot(p.x - (CASH_ROOM.x + m.position.x), p.z - (CASH_ROOM.z + m.position.z)) < 1.3) { m.visible = false; socket.emit('collectCash', i); clearTimeout(window._cashT); window._cashT = setTimeout(() => showToast('⚠ No reply from the cash server. Open /cash-test on your game site to see why.'), 4000); } });
     if (Math.hypot(p.x - CASH_ROOM.x, p.z - (CASH_ROOM.z + 7)) < 2) hint = 'Press E to leave';
   } else { nearDoor = DOORS.find(d => Math.hypot(p.x - d.x, p.z - d.z) < 2.2) || null; if (nearDoor) hint = 'Press E to go inside'; }
   _cp.textContent = hint; _cp.style.display = hint ? 'block' : 'none';
@@ -1604,6 +1604,7 @@ function renderCarShop() {
 window.addEventListener('load', () => {
   socket.on('authState', st => { if (st.loggedIn !== undefined) window._loggedIn = !!st.loggedIn; });   // same login state the rest of the game uses
   socket.on('cashState', s => {
+    clearTimeout(window._cashT);
     if (s.cash !== undefined) document.getElementById('cash-val').textContent = Number(s.cash).toLocaleString();
     if (s.cars) myOwned = s.cars; window._loggedIn = !s.guest;
     if (s.gained) showToast('💵 +' + s.gained);
