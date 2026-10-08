@@ -855,6 +855,7 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/utils/SkeletonUtils.js"></script>
 <script src="/socket.io/socket.io.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
 <script>
@@ -1567,22 +1568,39 @@ let inCashRoom = false, cashBack = null, myOwned = [], carCatalog = {}, nearDoor
   PILE_OFFS.forEach(([x, z]) => { const p = new THREE.Group(); p.add(new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.14, 0.34), M(0x2e8b3a))); p.add(new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.16, 0.36), M(0xf4f1de))); p.position.set(x, 0.1, z); g.add(p); cashPileMeshes.push(p); });
   scene.add(g);
 })();
+function exitCashRoom() { const b = cashBack || { x: 0, z: 0 }; inCashRoom = false; window._inCash = false; myAvatar.position.set(b.x, 0, b.z + 1.5); _exitBtn.style.display = 'none'; }
+const _exitBtn = document.createElement('button'); _exitBtn.textContent = '🚪 Exit'; _exitBtn.onclick = exitCashRoom;
+_exitBtn.style.cssText = 'position:fixed;left:50%;bottom:120px;transform:translateX(-50%);padding:10px 22px;border:0;border-radius:22px;background:#e91e8c;color:#fff;font:700 15px sans-serif;display:none;z-index:50;cursor:pointer';
+document.body.appendChild(_exitBtn);
+const _fl = document.createElement('button'); _fl.textContent = '🎥 Free look';
+_fl.style.cssText = 'position:fixed;right:12px;bottom:52px;padding:7px 12px;border:0;border-radius:16px;background:rgba(20,10,40,.8);color:#fff;font:600 12px sans-serif;z-index:50;cursor:pointer';
+_fl.onclick = () => { renderer.domElement.requestPointerLock && renderer.domElement.requestPointerLock(); showToast('Move the mouse to look around. Press Esc to get your cursor back.'); };
+document.body.appendChild(_fl);
+addEventListener('mousemove', e => { if (document.pointerLockElement === renderer.domElement) { camYaw -= e.movementX * 0.003; camPitch = Math.max(-1.1, Math.min(1.45, camPitch + e.movementY * 0.003)); } });
+addEventListener('wheel', e => { if (e.target === renderer.domElement) window._camDist = Math.max(3, Math.min(12, (window._camDist || 6) + e.deltaY * 0.004)); }, { passive: true });
+function camSafety() {   // keep the camera above ground, and inside the room when indoors, then re-aim
+  if (window._inCash) { camera.position.x = Math.max(CASH_ROOM.x - 8.2, Math.min(CASH_ROOM.x + 8.2, camera.position.x)); camera.position.z = Math.max(CASH_ROOM.z - 8.2, Math.min(CASH_ROOM.z + 8.2, camera.position.z)); camera.position.y = Math.min(camera.position.y, 3.6); }
+  if (camera.position.y < 0.4) camera.position.y = 0.4;
+  camera.lookAt(myAvatar.position.x, myAvatar.position.y + 1, myAvatar.position.z);
+}
 const _cp = document.createElement('div'); _cp.style.cssText = 'position:fixed;left:50%;bottom:70px;transform:translateX(-50%);background:#222;color:#fff;padding:8px 16px;border-radius:20px;font:600 14px sans-serif;display:none;z-index:50';
 document.body.appendChild(_cp);
 setInterval(() => {
   if (typeof myAvatar === 'undefined' || !myAvatar || (typeof drivingCarId !== 'undefined' && drivingCarId)) { _cp.style.display = 'none'; return; }
   const p = myAvatar.position; let hint = '';
+  _exitBtn.style.display = inCashRoom ? 'block' : 'none';
+  if (inCashRoom && Math.hypot(p.x - CASH_ROOM.x, p.z - CASH_ROOM.z) > 40) { inCashRoom = false; window._inCash = false; }
   if (inCashRoom) {
     p.x = Math.max(CASH_ROOM.x - 8.4, Math.min(CASH_ROOM.x + 8.4, p.x)); p.z = Math.max(CASH_ROOM.z - 8.4, Math.min(CASH_ROOM.z + 8.4, p.z));
     cashPileMeshes.forEach((m, i) => { if (m.visible && Math.hypot(p.x - (CASH_ROOM.x + m.position.x), p.z - (CASH_ROOM.z + m.position.z)) < 1.3) { m.visible = false; socket.emit('collectCash', i); clearTimeout(window._cashT); window._cashT = setTimeout(() => showToast('⚠ No reply from the cash server. Open /cash-test on your game site to see why.'), 4000); } });
-    if (Math.hypot(p.x - CASH_ROOM.x, p.z - (CASH_ROOM.z + 7)) < 2) hint = 'Press E to leave';
+    hint = 'Press E (or tap 🚪 Exit) to leave';
   } else { nearDoor = DOORS.find(d => Math.hypot(p.x - d.x, p.z - d.z) < 2.2) || null; if (nearDoor) hint = 'Press E to go inside'; }
   _cp.textContent = hint; _cp.style.display = hint ? 'block' : 'none';
 }, 150);
 document.addEventListener('keydown', e => {
   if (e.code !== 'KeyE' || /INPUT|TEXTAREA/.test(document.activeElement.tagName) || (typeof drivingCarId !== 'undefined' && drivingCarId)) return;
   const p = myAvatar.position;
-  if (inCashRoom) { if (Math.hypot(p.x - CASH_ROOM.x, p.z - (CASH_ROOM.z + 7)) < 2) { inCashRoom = false; window._inCash = false; p.set(cashBack.x, 0, cashBack.z + 1.5); } }
+  if (inCashRoom) exitCashRoom();
   else if (nearDoor && !(typeof findNearbyCar === 'function' && findNearbyCar())) { if (window._loggedIn === false) { showToast('Log in to collect cash'); return; } cashBack = { x: p.x, z: p.z }; inCashRoom = true; window._inCash = true; p.set(CASH_ROOM.x, 0, CASH_ROOM.z + 6); }
 });
 function spawnOwnedCar(carId) {
@@ -1614,6 +1632,30 @@ window.addEventListener('load', () => {
   socket.on('carCatalog', c => { carCatalog = c; renderCarShop(); });
   socket.on('cashPiles', a => a.forEach((v, i) => { if (cashPileMeshes[i]) cashPileMeshes[i].visible = !!v; }));
 });
+/* ---- Phase 5: skinned, animated GLB humans. Opt-in: test with  /?human=soldier  or  /?human=xbot ; or add models/human-male.glb + models/human-female.glb ---- */
+const HUMAN_URLS = (() => { const t = new URLSearchParams(location.search).get('human'); if (t) { const u = 'models/test/' + t.replace(/[^\w-]/g, '') + '.glb'; return { male: u, female: u, other: u }; } return { male: 'models/human-male.glb', female: 'models/human-female.glb', other: 'models/human-male.glb' }; })();
+const _humanCache = {};
+function loadHuman(g) { const url = HUMAN_URLS[g] || HUMAN_URLS.other; if (!THREE.GLTFLoader) return Promise.resolve(null); return _humanCache[url] || (_humanCache[url] = new Promise(res => new THREE.GLTFLoader().load(url, x => res(x), undefined, () => res(null)))); }
+function attachGlbBody(group, gender) {
+  loadHuman(gender).then(gltf => {
+    if (!gltf || !THREE.SkeletonUtils || !group.userData.body) return;
+    const m = THREE.SkeletonUtils.clone(gltf.scene), holder = new THREE.Group(); holder.add(m);
+    const b = new THREE.Box3().setFromObject(m), k = 1.75 / Math.max(0.1, b.max.y - b.min.y); holder.scale.setScalar(k); holder.position.y = -b.min.y * k;
+    m.traverse(o => { if (o.isMesh) { o.castShadow = true; o.frustumCulled = false; } });
+    const mixer = new THREE.AnimationMixer(m), acts = {};
+    gltf.animations.forEach(c => { const n = c.name.toLowerCase(); ['idle', 'walk', 'run'].forEach(w => { if (n.includes(w) && !acts[w]) acts[w] = mixer.clipAction(c); }); });
+    if (!acts.idle) return;
+    group.userData.body.visible = false; group.add(holder); acts.idle.play();
+    group.userData.glb = { mixer, acts, cur: 'idle', pn: performance.now() };
+  });
+}
+function driveGlb(u, now) {   // idle / walk / run chosen from how fast the character is actually moving
+  const g = u.glb, dt = Math.min(0.1, (now - g.pn) / 1000); g.pn = now;
+  const want = u.sp > 0.11 && g.acts.run ? 'run' : u.sp > 0.015 && g.acts.walk ? 'walk' : 'idle';
+  if (want !== g.cur) { const a = g.acts[want], o = g.acts[g.cur]; a.reset().play(); o.crossFadeTo(a, 0.2, false); g.cur = want; }
+  g.acts[g.cur].timeScale = g.cur === 'idle' ? 1 : Math.max(0.6, Math.min(1.6, u.sp / (g.cur === 'run' ? 0.14 : 0.06)));
+  g.mixer.update(dt);
+}
 function addParkedCar(x, z, rotY) {
   const group = new THREE.Group();
   const color = carColors[Math.floor(Math.random()*carColors.length)];
@@ -2944,6 +2986,7 @@ function makeAvatarMesh(gender, outfitColor, hairStyle, role, look) {
   if (look.h) group.scale.setScalar(look.h); if (look.w) body.scale.x *= look.w;
   group.userData = { legs, arms, elbows, knees, body, head, emote: null };
   group.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  attachGlbBody(group, gender);
   return group;
 }
 
@@ -2951,6 +2994,7 @@ function tickAvatar(g, now) {
   const u = g && g.userData; if (!u || !u.legs) return;
   const p = g.position, sp = u.lx === undefined ? 0 : Math.hypot(p.x - u.lx, p.z - u.lz);
   u.lx = p.x; u.lz = p.z; u.sp = (u.sp || 0) * 0.75 + sp * 0.25; u.ph = (u.ph || 0) + (u.walkAmp === undefined ? sp * 9 : 0);
+  if (u.glb) { driveGlb(u, now); return; }
   if (u.walkAmp !== undefined) { u.ph += Math.min(0.1, (now - (u.pn || now)) / 1000) * 7; u.pn = now; }
   const amp = u.walkAmp !== undefined ? u.walkAmp : Math.min(0.75, u.sp * 6), la = Math.sin(u.ph) * amp, T = now / 1000;
   let a0x = -la * 0.85, a1x = la * 0.85, a0z = -0.07, a1z = 0.07, bob = Math.abs(Math.sin(u.ph)) * 0.02 * amp * 4 + Math.sin(T * 2) * 0.003;
@@ -3200,7 +3244,7 @@ function moveDrag(x,y){
   if(!dragging) return;
   camYaw -= (x-lastX)*0.006;
   camPitch += (y-lastY)*0.004;
-  camPitch = Math.max(-0.85, Math.min(1.0, camPitch));
+  camPitch = Math.max(-1.1, Math.min(1.45, camPitch));
   lastX = x; lastY = y;
 }
 function endDrag(){ dragging = false; }
@@ -3440,11 +3484,11 @@ function updateMovement() {
   const targetY = swimming ? -0.65 + Math.sin(performance.now()/350) * 0.06 : (onBridge(myAvatar.position.x, myAvatar.position.z) ? BRIDGE.y : 0);
   myAvatar.position.y += (targetY - myAvatar.position.y) * 0.25;
   setChip(swimming ? '🏊 Swimming' : null);
-  const camDist = 6;
+  const camDist = window._camDist || 6;
   camera.position.x = myAvatar.position.x - Math.sin(camYaw)*camDist*Math.cos(camPitch);
   camera.position.z = myAvatar.position.z - Math.cos(camYaw)*camDist*Math.cos(camPitch);
   camera.position.y = myAvatar.position.y + 1.2 + camDist*Math.sin(camPitch);
-  camera.lookAt(myAvatar.position.x, myAvatar.position.y+1, myAvatar.position.z);
+  camera.lookAt(myAvatar.position.x, myAvatar.position.y+1, myAvatar.position.z); camSafety();
 
   const nearby = findNearbyCar();
   if (nearby && !nearby.occupiedBy) {
