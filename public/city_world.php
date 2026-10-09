@@ -1636,9 +1636,13 @@ window.addEventListener('load', () => {
 const HUMAN_URLS = (() => { const t = new URLSearchParams(location.search).get('human'); if (t) { const u = 'models/test/' + t.replace(/[^\w-]/g, '') + '.glb'; return { male: u, female: u, other: u }; } return { male: 'models/human-male.glb', female: 'models/human-female.glb', other: 'models/human-male.glb' }; })();
 const _humanCache = {};
 function loadHuman(g) { const url = HUMAN_URLS[g] || HUMAN_URLS.other; if (!THREE.GLTFLoader) return Promise.resolve(null); return _humanCache[url] || (_humanCache[url] = new Promise(res => new THREE.GLTFLoader().load(url, x => res(x), undefined, () => res(null)))); }
+const _animCache = {};
+function loadAnim(n) { return _animCache[n] || (_animCache[n] = new Promise(res => THREE.GLTFLoader ? new THREE.GLTFLoader().load('models/anim/' + n + '.glb', x => { const c = x.animations[0]; if (c) c.name = n; res(c || null); }, undefined, () => res(null)) : res(null))); }
 function attachGlbBody(group, gender) {
-  loadHuman(gender).then(gltf => {
+  loadHuman(gender).then(async gltf => {
     if (!gltf || !THREE.SkeletonUtils || !group.userData.body) return;
+    const have = gltf.animations.map(c => c.name.toLowerCase()).join('|');
+    if (!/idle/.test(have) || !/walk/.test(have)) gltf = { scene: gltf.scene, animations: gltf.animations.concat((await Promise.all(['idle', 'walk', 'run'].map(loadAnim))).filter(Boolean)) };
     const m = THREE.SkeletonUtils.clone(gltf.scene), holder = new THREE.Group(); holder.add(m);
     const b = new THREE.Box3().setFromObject(m), k = 1.75 / Math.max(0.1, b.max.y - b.min.y); holder.scale.setScalar(k); holder.position.y = -b.min.y * k;
     m.traverse(o => { if (o.isMesh) { o.castShadow = true; o.frustumCulled = false; } });
