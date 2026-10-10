@@ -3136,6 +3136,7 @@ const cloudTex = (() => { const c = document.createElement('canvas'); c.width = 
   return new THREE.CanvasTexture(c); })();
 window.cloudMat = new THREE.SpriteMaterial({ map: cloudTex, transparent: true, opacity: 0.9, depthWrite: false, fog: false });
 const cloudGroup = new THREE.Group(); scene.add(cloudGroup);
+cloudGroup.visible = new URLSearchParams(location.search).get('clouds') === '1';   // clouds are off by default (they showed up as dark streaks); add ?clouds=1 to bring them back
 for (let i = 0; i < 18; i++) { const s = new THREE.Sprite(cloudMat), a = Math.random() * 6.283, r = 170 + Math.random() * 190; s.position.set(Math.cos(a) * r, 70 + Math.random() * 60, Math.sin(a) * r); s.scale.set(110 + Math.random() * 70, 42 + Math.random() * 20, 1); cloudGroup.add(s); }
 const BIRDS = new THREE.Group(); scene.add(BIRDS); window.BIRDS = BIRDS;
 const _flocks = [], _wingG = (() => { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(new Float32Array([0, 0, 0.16, 0, 0, -0.16, 0.85, 0.04, -0.05]), 3)); g.computeVertexNormals(); return g; })();
