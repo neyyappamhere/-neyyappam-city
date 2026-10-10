@@ -1664,6 +1664,13 @@ function driveGlb(u, now) {   // idle / walk / run chosen from how fast the char
   g.acts[g.cur].timeScale = g.cur === 'idle' ? 1 : Math.max(0.6, Math.min(1.6, u.sp / (g.cur === 'run' ? 0.14 : 0.06)));
   g.mixer.update(dt);
 }
+/* Debug helper: open the game with  /?hide=wires  or  ?hide=birds  or  ?hide=rain  (comma separated) to find out what a strange moving thing is. */
+setTimeout(() => {
+  const h = (new URLSearchParams(location.search).get('hide') || '').split(',');
+  if (h.includes('wires')) scene.traverse(o => { if (o.name === 'wire') o.visible = false; });
+  if (h.includes('birds') && typeof BIRDS !== 'undefined') BIRDS.visible = false;
+  if (h.includes('rain') && typeof rainMesh !== 'undefined') rainMesh.visible = false;
+}, 1500);
 function addParkedCar(x, z, rotY) {
   const group = new THREE.Group();
   const color = carColors[Math.floor(Math.random()*carColors.length)];
@@ -2262,7 +2269,7 @@ let riverBoat = null, riverNet = null, riverNetHang = null;
   polesX.forEach(x => { cy(scene, 0.12, 0.16, 7.0, 0x6b4a2a, x, 3.5, 3.6, 8); bx(scene, 0.12, 0.12, 2.0, 0x5a3a1a, x, 6.7, 3.6); [-0.8, 0, 0.8].forEach(dz => cy(scene, 0.05, 0.05, 0.14, 0xdfe6e9, x, 6.85, 3.6 + dz, 6)); });
   for (let i = 0; i < polesX.length - 1; i++) [-0.8, 0, 0.8].forEach(dz => {
     const pts = []; for (let k = 0; k <= 8; k++) { const t = k / 8; pts.push(new THREE.Vector3(polesX[i] + (polesX[i + 1] - polesX[i]) * t, 6.9 - Math.sin(t * Math.PI) * 0.8, 3.6 + dz)); }
-    scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), wireMat));
+    const wireLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), wireMat); wireLine.name = 'wire'; scene.add(wireLine);
   });
 
   // ---- coconut palms + banana clumps around the house (kept clear of house, paddy and bridge) ----
