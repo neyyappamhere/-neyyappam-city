@@ -1638,9 +1638,13 @@ const _humanCache = {};
 function loadHuman(g) { const url = HUMAN_URLS[g] || HUMAN_URLS.other; if (!THREE.GLTFLoader) return Promise.resolve(null); return _humanCache[url] || (_humanCache[url] = new Promise(res => new THREE.GLTFLoader().load(url, x => res(x), undefined, () => res(null)))); }
 const _animCache = {};
 function loadAnim(n) { return _animCache[n] || (_animCache[n] = new Promise(res => THREE.GLTFLoader ? new THREE.GLTFLoader().load('models/anim/' + n + '.glb', x => { const c = x.animations[0]; if (c) c.name = n; res(c || null); }, undefined, () => res(null)) : res(null))); }
+let _humanWarned = false;
+function humanWarn(msg) { console.warn('[human] ' + msg); if (!_humanWarned && typeof showToast === 'function') { _humanWarned = true; showToast('⚠ ' + msg); } }
 function attachGlbBody(group, gender) {
+  const orig = group.children.slice();   // the old code-built body parts (the name label is added later, so it is not in this list)
   loadHuman(gender).then(async gltf => {
-    if (!gltf || !THREE.SkeletonUtils || !group.userData.body) return;
+    if (!gltf) { humanWarn('Human model not found: ' + (HUMAN_URLS[gender] || HUMAN_URLS.other)); return; }
+    if (!THREE.SkeletonUtils) { humanWarn('SkeletonUtils script did not load'); return; }
     const have = gltf.animations.map(c => c.name.toLowerCase()).join('|');
     if (!/idle/.test(have) || !/walk/.test(have)) gltf = { scene: gltf.scene, animations: gltf.animations.concat((await Promise.all(['idle', 'walk', 'run'].map(loadAnim))).filter(Boolean)) };
     const m = THREE.SkeletonUtils.clone(gltf.scene), holder = new THREE.Group(); holder.add(m);
@@ -1648,8 +1652,8 @@ function attachGlbBody(group, gender) {
     m.traverse(o => { if (o.isMesh) { o.castShadow = true; o.frustumCulled = false; } });
     const mixer = new THREE.AnimationMixer(m), acts = {};
     gltf.animations.forEach(c => { const n = c.name.toLowerCase(); ['idle', 'walk', 'run'].forEach(w => { if (n.includes(w) && !acts[w]) acts[w] = mixer.clipAction(c); }); });
-    if (!acts.idle) return;
-    group.userData.body.visible = false; group.add(holder); acts.idle.play();
+    if (!acts.idle) { humanWarn('Animation files missing: models/anim/idle.glb, walk.glb, run.glb'); return; }
+    orig.forEach(c => { c.visible = false; }); group.add(holder); acts.idle.play();
     group.userData.glb = { mixer, acts, cur: 'idle', pn: performance.now() };
   });
 }
