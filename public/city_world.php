@@ -1670,6 +1670,10 @@ setTimeout(() => {
   if (h.includes('wires')) scene.traverse(o => { if (o.name === 'wire') o.visible = false; });
   if (h.includes('birds') && typeof BIRDS !== 'undefined') BIRDS.visible = false;
   if (h.includes('rain') && typeof rainMesh !== 'undefined') rainMesh.visible = false;
+  if (h.includes('clouds') && window.cloudMat) scene.traverse(o => { if (o.material === cloudMat) o.visible = false; });
+  if (h.includes('shadows')) { sun.castShadow = false; scene.traverse(o => { if (o.material) o.material.needsUpdate = true; }); }
+  if (h.includes('stars') && typeof stars !== 'undefined') stars.visible = false;
+  if (h[0]) showToast('Debug: hiding ' + h.join(', '));   // proves this new version is the one running
 }, 1500);
 function addParkedCar(x, z, rotY) {
   const group = new THREE.Group();
