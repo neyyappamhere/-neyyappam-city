@@ -1637,7 +1637,7 @@ const HUMAN_URLS = (() => { const t = new URLSearchParams(location.search).get('
 const _humanCache = {};
 function loadHuman(g) { const url = HUMAN_URLS[g] || HUMAN_URLS.other; if (!THREE.GLTFLoader) return Promise.resolve(null); return _humanCache[url] || (_humanCache[url] = new Promise(res => new THREE.GLTFLoader().load(url, x => res(x), undefined, () => res(null)))); }
 const _animCache = {};
-function loadAnim(n) { return _animCache[n] || (_animCache[n] = new Promise(res => THREE.GLTFLoader ? new THREE.GLTFLoader().load('models/anim/' + n + '.glb', x => { const c = x.animations[0]; if (c) c.name = n; res(c || null); }, undefined, () => res(null)) : res(null))); }
+function loadAnim(n) { return _animCache[n] || (_animCache[n] = new Promise(res => { if (!THREE.GLTFLoader) return res(null); const L = new THREE.GLTFLoader(), ok = x => { const c = x.animations[0]; if (c) c.name = n; res(c || null); }; L.load('models/anim/' + n + '.glb', ok, undefined, () => L.load('anim/' + n + '.glb', ok, undefined, () => res(null))); })); }
 let _humanWarned = false;
 function humanWarn(msg) { console.warn('[human] ' + msg); if (!_humanWarned && typeof showToast === 'function') { _humanWarned = true; showToast('⚠ ' + msg); } }
 function attachGlbBody(group, gender) {
@@ -1652,7 +1652,7 @@ function attachGlbBody(group, gender) {
     m.traverse(o => { if (o.isMesh) { o.castShadow = true; o.frustumCulled = false; } });
     const mixer = new THREE.AnimationMixer(m), acts = {};
     gltf.animations.forEach(c => { const n = c.name.toLowerCase(); ['idle', 'walk', 'run'].forEach(w => { if (n.includes(w) && !acts[w]) acts[w] = mixer.clipAction(c); }); });
-    if (!acts.idle) { humanWarn('Animation files missing: models/anim/idle.glb, walk.glb, run.glb'); return; }
+    if (!acts.idle) { humanWarn('Animation files missing: put idle.glb, walk.glb, run.glb in public/models/anim/'); return; }
     orig.forEach(c => { c.visible = false; }); group.add(holder); acts.idle.play();
     group.userData.glb = { mixer, acts, cur: 'idle', pn: performance.now() };
   });
