@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
 <title>Neyyappam City</title>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Syne:wght@700;800&family=Noto+Sans+Malayalam:wght@500;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -498,6 +498,34 @@
     background:rgba(255,255,255,.08); color:#7d93a4; font-weight:700; font-size:.85em; cursor:not-allowed;
     font-family:inherit;
   }
+  /* ===== Mobile layout: compact top bar, one Menu button for all the tool buttons, no overlapping chips ===== */
+  #menu-toggle{ display:none; }
+  @media (max-width:700px){
+    #topbar{ padding:calc(8px + env(safe-area-inset-top)) 8px 8px; align-items:flex-start; }
+    #brand span{ display:none; } #brand img{ width:30px; height:30px; }
+    #hud-right{ gap:5px; flex-wrap:wrap; justify-content:flex-end; max-width:calc(100% - 44px); }
+    #status-pill{ display:none; }
+    #health-pill,#balloon-pill,#cash-pill,#account-pill{ padding:5px 9px !important; font-size:.72em !important; margin:0 !important; }
+    #health-bar{ width:40px; } #account-pill{ max-width:120px; } #account-name{ max-width:56px; }
+    #menu-toggle{ display:block; position:absolute; left:8px; top:calc(48px + env(safe-area-inset-top)); z-index:9; padding:8px 14px; border:1px solid var(--border); border-radius:20px; background:var(--card); color:var(--text); font:700 .8em 'Space Grotesk',sans-serif; }
+    #mobile-menu{ display:none; position:absolute; left:8px; right:8px; top:calc(88px + env(safe-area-inset-top)); z-index:25; flex-wrap:wrap; gap:6px; padding:10px; background:rgba(17,9,32,.97); border:1px solid var(--border); border-radius:16px; max-height:62vh; overflow-y:auto; box-shadow:0 12px 30px rgba(0,0,0,.6); }
+    #mobile-menu.open{ display:flex; }
+    #mobile-menu button{ position:static !important; flex:1 1 30%; width:auto !important; height:auto !important; min-height:42px; margin:0 !important; padding:8px 10px !important; border-radius:12px !important; font-size:.78em !important; }
+    #mobile-menu #mic-btn,#mobile-menu #sound-btn{ flex:1 1 45%; }
+    #job-banner{ top:calc(48px + env(safe-area-inset-top)) !important; left:96px !important; right:8px !important; transform:none !important; max-width:none !important; font-size:.68em !important; padding:6px 10px !important; border-radius:12px !important; }
+    #waypoint-readout,#state-chip,#private-bar{ top:calc(92px + env(safe-area-inset-top)) !important; }
+    #radio-chip{ top:calc(124px + env(safe-area-inset-top)) !important; max-width:92vw; text-align:center; font-size:.7em !important; }
+    #toast-stack{ top:calc(160px + env(safe-area-inset-top)); left:8px; right:8px; align-items:center; } .toast{ max-width:92vw; font-size:.75em; }
+    #emote-bar{ right:8px !important; bottom:190px !important; gap:4px !important; } #emote-bar .rbtn{ padding:8px 10px; font-size:.9em; }
+    #social-ui,#radio-ui{ flex-wrap:wrap; justify-content:center; max-width:68vw; }
+    #social-ui{ bottom:250px !important; } #radio-ui{ bottom:170px !important; }
+    #vehicle-prompt,#shop-prompt,#sit-prompt,#fight-btn{ max-width:62vw; white-space:normal; text-align:center; font-size:.8em !important; }
+    #vehicle-prompt{ bottom:calc(86px + env(safe-area-inset-bottom)) !important; } #shop-prompt{ bottom:130px !important; } #sit-prompt{ bottom:170px !important; }
+    #cart-call,#fly-btns{ bottom:140px !important; }
+    #chat-toggle{ bottom:calc(14px + env(safe-area-inset-bottom)); } #joystick-zone{ bottom:calc(84px + env(safe-area-inset-bottom)); }
+    #name-gate{ align-items:flex-start; overflow-y:auto; } #name-gate .card{ margin:12px auto; width:min(94vw,340px); padding:22px 18px; }
+    #stats-panel,#shop-panel,#inventory-panel,#private-panel{ max-height:86vh; }
+  }
 </style>
 </head>
 <body>
@@ -559,11 +587,13 @@
     <div id="account-pill"><span id="account-name">Guest</span><button id="account-action" type="button">Log in</button></div>
     <div id="balloon-pill"><i class="fa-solid fa-circle" style="border-radius:50%;"></i> 🎈 <span id="balloon-val">0</span></div>
     <div id="cash-pill" style="background:#12301a;color:#fff;border-radius:20px;padding:6px 12px;font-weight:700;margin-left:6px">💵 <span id="cash-val">0</span></div>
-    <button onclick="document.getElementById('car-shop').style.display='block';renderCarShop()" style="margin-left:6px;border:0;border-radius:20px;padding:6px 12px;background:#e91e8c;color:#fff;font-weight:700;cursor:pointer">🚗 Car Shop</button>
+    <button id="carshop-btn" onclick="document.getElementById('car-shop').style.display='block';renderCarShop()" style="margin-left:6px;border:0;border-radius:20px;padding:6px 12px;background:#e91e8c;color:#fff;font-weight:700;cursor:pointer">🚗 Car Shop</button>
     <div id="car-shop" style="display:none;position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:min(380px,92vw);background:#1b1030;color:#fff;border-radius:16px;padding:16px;z-index:60"><div style="display:flex;justify-content:space-between"><b>🚗 Car Shop</b><span onclick="document.getElementById('car-shop').style.display='none'" style="cursor:pointer">✖</span></div><div id="car-shop-body"></div></div>
   </div>
 </div>
 
+<button id="menu-toggle" type="button">☰ Menu</button>
+<div id="mobile-menu"></div>
 <button id="mic-btn" title="Microphone (off)"><i class="fa-solid fa-microphone-slash"></i></button>
 <button id="sound-btn" title="Sound (off)"><i class="fa-solid fa-volume-xmark"></i></button>
 <button id="map-btn"><i class="fa-solid fa-map"></i> Map</button>
@@ -1195,7 +1225,7 @@ if (!window.THREE) {
   try {
     renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(innerWidth, innerHeight);
-    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    renderer.setPixelRatio(Math.min(devicePixelRatio, matchMedia('(pointer:coarse)').matches ? 1.5 : 2));
     renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     document.getElementById('canvas-wrap').appendChild(renderer.domElement);
   } catch (e) {
@@ -1575,7 +1605,7 @@ document.body.appendChild(_exitBtn);
 const _fl = document.createElement('button'); _fl.textContent = '🎥 Free look';
 _fl.style.cssText = 'position:fixed;right:12px;bottom:52px;padding:7px 12px;border:0;border-radius:16px;background:rgba(20,10,40,.8);color:#fff;font:600 12px sans-serif;z-index:50;cursor:pointer';
 _fl.onclick = () => { renderer.domElement.requestPointerLock && renderer.domElement.requestPointerLock(); showToast('Move the mouse to look around. Press Esc to get your cursor back.'); };
-document.body.appendChild(_fl);
+document.body.appendChild(_fl); if (matchMedia('(pointer:coarse)').matches) _fl.style.display = 'none';   // free look is for mouse users
 addEventListener('mousemove', e => { if (document.pointerLockElement === renderer.domElement) { camYaw -= e.movementX * 0.003; camPitch = Math.max(-1.1, Math.min(1.45, camPitch + e.movementY * 0.003)); } });
 addEventListener('wheel', e => { if (e.target === renderer.domElement) window._camDist = Math.max(3, Math.min(12, (window._camDist || 6) + e.deltaY * 0.004)); }, { passive: true });
 function camSafety() {   // keep the camera above ground, and inside the room when indoors, then re-aim
@@ -1640,7 +1670,9 @@ const _animCache = {};
 function loadAnim(n) { return _animCache[n] || (_animCache[n] = new Promise(res => { if (!THREE.GLTFLoader) return res(null); const L = new THREE.GLTFLoader(), ok = x => { const c = x.animations[0]; if (c) c.name = n; res(c || null); }; L.load('models/anim/' + n + '.glb', ok, undefined, () => L.load('anim/' + n + '.glb', ok, undefined, () => res(null))); })); }
 let _humanWarned = false;
 function humanWarn(msg) { console.warn('[human] ' + msg); if (!_humanWarned && typeof showToast === 'function') { _humanWarned = true; showToast('⚠ ' + msg); } }
+const GLB_HUMANS_ON = false;   // flip to true only when real character files are in public/models/ (otherwise the game skips them silently)
 function attachGlbBody(group, gender) {
+  if (!GLB_HUMANS_ON && !new URLSearchParams(location.search).get('human')) return;
   const orig = group.children.slice();   // the old code-built body parts (the name label is added later, so it is not in this list)
   loadHuman(gender).then(async gltf => {
     if (!gltf) { humanWarn('Human model not found: ' + (HUMAN_URLS[gender] || HUMAN_URLS.other)); return; }
@@ -4726,6 +4758,19 @@ addEventListener('resize', () => {
   camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
 });
+/* ---- Mobile UI: on small screens the tool buttons move into one Menu panel ---- */
+(function mobileUi() {
+  const mq = matchMedia('(max-width:700px)'), menu = document.getElementById('mobile-menu'), tg = document.getElementById('menu-toggle');
+  const ids = ['carshop-btn', 'map-btn', 'stats-btn', 'shop-btn', 'inventory-btn', 'private-btn', 'mic-btn', 'sound-btn'], home = {};
+  ids.forEach(id => { const el = document.getElementById(id); if (el) home[id] = { el, parent: el.parentNode, next: el.nextSibling }; });
+  function layout() {
+    if (mq.matches) Object.values(home).forEach(h => menu.appendChild(h.el));
+    else { Object.values(home).forEach(h => h.parent.insertBefore(h.el, h.next && h.next.parentNode === h.parent ? h.next : null)); menu.classList.remove('open'); }
+  }
+  tg.onclick = () => menu.classList.toggle('open');
+  menu.addEventListener('click', e => { const b = e.target.closest('button'); if (b && !/^(mic|sound)-btn$/.test(b.id)) setTimeout(() => menu.classList.remove('open'), 60); });
+  mq.addEventListener ? mq.addEventListener('change', layout) : mq.addListener(layout); layout();
+})();
 </script>
 </body>
 </html>
