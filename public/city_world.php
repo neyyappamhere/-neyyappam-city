@@ -541,9 +541,29 @@
     #hint-bar{ left:72px; right:8px; transform:none; max-width:none; bottom:calc(10px + env(safe-area-inset-bottom)); font-size:10px; }
     #health-pill{ gap:5px !important; } .aura-lbl{ font-size:.8em; }
   }
+  /* ===== Splash screen ===== */
+  #splash{ position:fixed; inset:0; background:linear-gradient(135deg,#fe019a 0%,#ff80d5 100%); display:flex; flex-direction:column; justify-content:center; align-items:center; z-index:9999; user-select:none; animation:splashFadeOut .6s ease forwards; animation-delay:2.4s; }
+  #splash .sp-center{ text-align:center; color:#fff; padding:0 20px; }
+  #splash img{ width:120px; height:120px; padding:16px; box-sizing:border-box; object-fit:contain; background:#fff; border-radius:30px; box-shadow:0 18px 40px rgba(120,0,70,.35); opacity:0; transform:scale(.7); animation:logoFadeInScale 1s ease forwards; }
+  #splash-hi{ margin-top:24px; font:800 1.3em 'Syne','Space Grotesk',sans-serif; opacity:0; animation:spFadeUp .8s ease .7s forwards; text-shadow:0 2px 12px rgba(120,0,70,.3); }
+  #splash .sp-bar{ width:120px; height:4px; background:rgba(255,255,255,.35); border-radius:4px; margin:20px auto 0; overflow:hidden; opacity:0; animation:spFadeUp .6s ease 1s forwards; }
+  #splash .sp-bar i{ display:block; height:100%; width:40%; background:#fff; border-radius:4px; animation:spLoad 1.2s ease-in-out infinite; }
+  #splash .sp-foot{ position:absolute; bottom:calc(28px + env(safe-area-inset-bottom)); font:600 .85em 'Space Grotesk',sans-serif; letter-spacing:.14em; color:rgba(255,255,255,.92); opacity:0; animation:spFadeUp .8s ease 1.1s forwards; }
+  @keyframes logoFadeInScale{ to{ opacity:1; transform:scale(1); } }
+  @keyframes splashFadeOut{ to{ opacity:0; visibility:hidden; pointer-events:none; } }
+  @keyframes spFadeUp{ from{ opacity:0; transform:translateY(10px); } to{ opacity:1; transform:translateY(0); } }
+  @keyframes spLoad{ 0%{ transform:translateX(-110%); } 100%{ transform:translateX(280%); } }
+  /* ===== Smaller, friendlier Aura and account chips ===== */
+  #health-pill{ padding:4px 9px !important; gap:5px !important; font-size:.72em !important; }
+  #health-bar{ width:34px !important; height:5px !important; } #health-val{ min-width:0 !important; }
+  #account-pill{ padding:3px 3px 3px 9px !important; gap:6px !important; font-size:.7em !important; max-width:118px !important; }
+  #account-name{ max-width:54px !important; } #account-pill button{ padding:4px 9px !important; font-size:.9em !important; border-radius:12px !important; }
+  @media (max-width:700px){ .aura-lbl{ display:none; } #health-pill::before{ content:'✨'; } }
 </style>
 </head>
 <body>
+
+<div id="splash"><div class="sp-center"><img src="https://neyyappam.com/assets/logos/neyyappamicon.png" alt="Neyyappam" onerror="this.style.display='none'"><div id="splash-hi">Welcome to Neyyappam City</div><div class="sp-bar"><i></i></div></div><div class="sp-foot">city.neyyappam.com</div></div>
 
 <div id="name-gate" class="checking">
   <div id="gate-loading">Signing you in…</div>
@@ -946,6 +966,7 @@ function applyAuth(d) {
 }
 function paintAuthUi() {
   const nm = document.getElementById('account-name'), btn = document.getElementById('account-action');
+  const sh = document.getElementById('splash-hi'); if (sh) sh.textContent = auth.loggedIn ? 'Hi, ' + auth.display + ' 👋' : 'Welcome to Neyyappam City';
   if (!nm) return;
   nm.textContent = auth.loggedIn ? auth.display : 'Guest';
   btn.textContent = auth.loggedIn ? 'Log out' : 'Log in';
@@ -3371,7 +3392,10 @@ function triggerVehicleAction() {
     exitVehicle();
   } else {
     const nearby = findNearbyCar();
-    if (nearby && !nearby.occupiedBy) socket.emit('enterCar', nearby.id);
+    if (nearby && !nearby.occupiedBy) {
+      socket.emit('enterCar', nearby.id); window._carDenied = false; const nid = nearby.id;
+      setTimeout(() => { const c = cars[nid]; if (!drivingCarId && c && !c.occupiedBy && !window._carDenied) { c.occupiedBy = socket.id; enterVehicle(nid); } }, 900);   // if the server is slow to answer, start driving anyway
+    }
   }
 }
 
@@ -3692,7 +3716,7 @@ socket.on('carEntered', ({ carId, driverId }) => {
   if (!c) return;
   c.occupiedBy = driverId;
   if (driverId === socket.id) {
-    enterVehicle(carId);
+    if (drivingCarId !== carId) enterVehicle(carId);
   } else if (others[driverId]) {
     others[driverId].group.visible = false;
   }
@@ -3719,7 +3743,7 @@ socket.on('carFreed', ({ carId }) => {
   c.occupiedBy = null;
   if (c.isPlane) { c.group.position.y = 0; c.group.rotation.z = 0; c.target = null; }
 });
-socket.on('carDenied', () => { });
+socket.on('carDenied', () => { window._carDenied = true; showToast('🚗 Someone is already driving that'); });
 
 socket.on('radioState', (s) => {
   radioState = { on: !!s.on, station: s.station | 0, stations: Array.isArray(s.stations) ? s.stations : [] };
@@ -4816,6 +4840,7 @@ addEventListener('resize', () => {
   let i = 0; const show = () => { txt.textContent = '💡 ' + T[i++ % T.length]; }; show(); setInterval(show, 9000);
   document.getElementById('hint-close').onclick = () => { bar.style.display = 'none'; try { localStorage.setItem('hintsOff', '1'); } catch (e) {} };
 })();
+document.getElementById('splash').addEventListener('animationend', e => { if (e.animationName === 'splashFadeOut') e.currentTarget.remove(); });
 </script>
 </body>
 </html>
