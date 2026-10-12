@@ -526,6 +526,21 @@
     #name-gate{ align-items:flex-start; overflow-y:auto; } #name-gate .card{ margin:12px auto; width:min(94vw,340px); padding:22px 18px; }
     #stats-panel,#shop-panel,#inventory-panel,#private-panel{ max-height:86vh; }
   }
+  /* ===== Mobile v2: Aura/balloons/cash + mini-map always visible, mic & speaker always visible, tips bar ===== */
+  #minimap{ position:absolute; z-index:6; top:64px; right:14px; width:110px; height:110px; border-radius:50%; border:2px solid rgba(255,255,255,.35); box-shadow:0 4px 14px rgba(0,0,0,.5); background:#241a34; pointer-events:none; }
+  #hint-bar{ position:absolute; z-index:6; left:50%; bottom:calc(8px + env(safe-area-inset-bottom)); transform:translateX(-50%); max-width:min(92vw,440px); display:flex; align-items:center; gap:8px; padding:4px 6px 4px 12px; border-radius:14px; background:rgba(0,0,0,.45); color:rgba(255,255,255,.78); font-size:11px; line-height:1.3; }
+  #hint-bar button{ border:0; background:rgba(255,255,255,.18); color:#fff; width:20px; height:20px; min-width:20px; border-radius:50%; font-size:10px; cursor:pointer; padding:0; }
+  #controls-hint{ display:none !important; }
+  .aura-lbl{ font-size:.85em; font-weight:700; }
+  @media (max-width:700px){
+    #minimap{ top:calc(56px + env(safe-area-inset-top)); right:8px; width:84px; height:84px; }
+    #mic-btn,#sound-btn{ position:absolute !important; top:calc(48px + env(safe-area-inset-top)) !important; right:auto !important; width:36px !important; height:36px !important; font-size:.85em !important; }
+    #mic-btn{ left:100px !important; } #sound-btn{ left:142px !important; }
+    #waypoint-readout,#state-chip,#private-bar,#radio-chip{ left:8px !important; transform:none !important; max-width:calc(100% - 112px) !important; text-align:left; }
+    #toast-stack{ top:calc(96px + env(safe-area-inset-top)) !important; left:8px !important; right:100px !important; align-items:flex-start !important; } .toast{ max-width:100% !important; }
+    #hint-bar{ left:72px; right:8px; transform:none; max-width:none; bottom:calc(10px + env(safe-area-inset-bottom)); font-size:10px; }
+    #health-pill{ gap:5px !important; } .aura-lbl{ font-size:.8em; }
+  }
 </style>
 </head>
 <body>
@@ -579,8 +594,8 @@
   </div>
   <div id="hud-right">
     <div id="status-pill"><span class="live-dot"></span> <span id="online-count">1</span> online</div>
-    <div id="health-pill" title="Health">
-      <i class="fa-solid fa-heart"></i>
+    <div id="health-pill" title="Aura">
+      <span class="aura-lbl">✨ Aura</span>
       <div id="health-bar"><div id="health-fill"></div></div>
       <span id="health-val">100</span>
     </div>
@@ -605,6 +620,8 @@
 <button id="ambulance-btn"><i class="fa-solid fa-truck-medical"></i> Call Ambulance (25 🎈)</button>
 
 <div id="toast-stack"></div>
+<canvas id="minimap" width="168" height="168"></canvas>
+<div id="hint-bar"><span id="hint-text"></span><button id="hint-close" type="button" aria-label="Close tips">✕</button></div>
 
 <div id="death-overlay">
   <div class="death-card">
@@ -653,7 +670,7 @@
     </div>
     <div class="stat-row"><span>Name</span><span id="stat-name">—</span></div>
     <div class="stat-row"><span>Look</span><span id="stat-look">—</span></div>
-    <div class="stat-row"><span>Health</span><span id="stat-health">100%</span></div>
+    <div class="stat-row"><span>Aura</span><span id="stat-health">100%</span></div>
     <div class="stat-row"><span>Balloons</span><span id="stat-balloons">0</span></div>
     <div class="stat-row"><span>Distance traveled</span><span id="stat-distance">0 m</span></div>
     <div class="stat-row"><span>Deliveries completed</span><span id="stat-deliveries">0</span></div>
@@ -3769,6 +3786,7 @@ socket.on('commission', ({ amount, balloons, from, itemId }) => {
 
 const jobBanner = document.getElementById('job-banner');
 socket.on('deliveryUpdated', (job) => {
+  return;   // delivery jobs were removed from the game (no crate, flag or banner)
   currentJob = job;
   if (!job) { pickupMarker.visible = false; dropoffMarker.visible = false; jobBanner.style.display = 'none'; return; }
   if (job.status === 'available') {
@@ -4535,7 +4553,7 @@ function applyDamage(amount, reason) {
   setHealth(myHealth - amount);
   document.getElementById('hurt-flash').classList.add('on');
   setTimeout(() => document.getElementById('hurt-flash').classList.remove('on'), 160);
-  if (amount >= 8) showToast('💔 -' + Math.round(amount) + ' HP');
+  if (amount >= 8) showToast('💔 -' + Math.round(amount) + ' aura');
 }
 ambBtn.onclick = () => callAmbulance(false);
 
@@ -4761,15 +4779,42 @@ addEventListener('resize', () => {
 /* ---- Mobile UI: on small screens the tool buttons move into one Menu panel ---- */
 (function mobileUi() {
   const mq = matchMedia('(max-width:700px)'), menu = document.getElementById('mobile-menu'), tg = document.getElementById('menu-toggle');
-  const ids = ['carshop-btn', 'map-btn', 'stats-btn', 'shop-btn', 'inventory-btn', 'private-btn', 'mic-btn', 'sound-btn'], home = {};
-  ids.forEach(id => { const el = document.getElementById(id); if (el) home[id] = { el, parent: el.parentNode, next: el.nextSibling }; });
+  const ids = ['carshop-btn', 'map-btn', 'stats-btn', 'shop-btn', 'inventory-btn', 'private-btn', 'emote-dance', 'emote-laugh', 'emote-aiyyo'], home = {}, LAB = { 'emote-dance': '💃 Dance', 'emote-laugh': '😂 Laugh', 'emote-aiyyo': '😱 Aiyyo' };
+  ids.forEach(id => { const el = document.getElementById(id); if (el) home[id] = { el, parent: el.parentNode, next: el.nextSibling, txt: el.textContent }; });
   function layout() {
-    if (mq.matches) Object.values(home).forEach(h => menu.appendChild(h.el));
-    else { Object.values(home).forEach(h => h.parent.insertBefore(h.el, h.next && h.next.parentNode === h.parent ? h.next : null)); menu.classList.remove('open'); }
+    if (mq.matches) Object.entries(home).forEach(([id, h]) => { menu.appendChild(h.el); if (LAB[id]) h.el.textContent = LAB[id]; });
+    else { Object.values(home).forEach(h => { h.parent.insertBefore(h.el, h.next && h.next.parentNode === h.parent ? h.next : null); h.el.textContent = h.txt; }); menu.classList.remove('open'); }
   }
   tg.onclick = () => menu.classList.toggle('open');
   menu.addEventListener('click', e => { const b = e.target.closest('button'); if (b && !/^(mic|sound)-btn$/.test(b.id)) setTimeout(() => menu.classList.remove('open'), 60); });
   mq.addEventListener ? mq.addEventListener('change', layout) : mq.addListener(layout); layout();
+})();
+/* ---- Mini-map (always visible, rotates with the camera) + small game tips with a close button ---- */
+(function miniMap() {
+  const cv = document.getElementById('minimap'), x = cv.getContext('2d'), SZ = cv.width, R = 48, S = SZ / (2 * R);
+  const dot = (px, pz, r, col) => { x.fillStyle = col; x.beginPath(); x.arc(px, pz, r, 0, 7); x.fill(); };
+  setInterval(() => {
+    if (typeof myAvatar === 'undefined' || !myAvatar) return;
+    x.setTransform(1, 0, 0, 1, 0, 0); x.clearRect(0, 0, SZ, SZ); x.fillStyle = '#2f4a2a'; x.fillRect(0, 0, SZ, SZ);
+    if (window._inCash || (typeof privScene !== 'undefined' && privScene)) { x.fillStyle = '#fff'; x.font = '26px serif'; x.textAlign = 'center'; x.fillText('🏠', SZ / 2, SZ / 2 + 9); return; }
+    const me = myAvatar.position;
+    x.translate(SZ / 2, SZ / 2); x.rotate(camYaw + Math.PI); x.scale(S, S); x.translate(-me.x, -me.z);
+    x.fillStyle = '#6b6f78';
+    for (let i = -GRID / 2; i <= GRID / 2; i++) { x.fillRect(i * BLOCK - ROAD_W / 2, -GRID * BLOCK / 2 - 3, ROAD_W, GRID * BLOCK + 6); x.fillRect(-GRID * BLOCK / 2 - 3, i * BLOCK - ROAD_W / 2, GRID * BLOCK + 6, ROAD_W); }
+    x.fillStyle = '#2a7fd0'; x.fillRect(RIVER.x1, -88, RIVER.x2 - RIVER.x1, 176);
+    dot(SHOP_POS.x, SHOP_POS.z, 3, '#ffd700'); dot(TEA_POS.x, TEA_POS.z, 3, '#c98a3a'); dot(MILK_POS.x, MILK_POS.z, 3, '#ffffff');
+    if (typeof myWaypoint !== 'undefined' && myWaypoint) dot(myWaypoint.x, myWaypoint.z, 3.5, '#ffee00');
+    Object.values(others).forEach(o => { if (o.group.visible) dot(o.group.position.x, o.group.position.z, 2.6, '#7ad7ff'); });
+    x.setTransform(1, 0, 0, 1, 0, 0); x.fillStyle = '#fe019a'; x.strokeStyle = '#fff'; x.lineWidth = 2;
+    x.beginPath(); x.moveTo(SZ / 2, SZ / 2 - 9); x.lineTo(SZ / 2 + 7, SZ / 2 + 7); x.lineTo(SZ / 2 - 7, SZ / 2 + 7); x.closePath(); x.fill(); x.stroke();
+  }, 120);
+})();
+(function tips() {
+  const bar = document.getElementById('hint-bar'), txt = document.getElementById('hint-text');
+  try { if (localStorage.getItem('hintsOff')) { bar.style.display = 'none'; return; } } catch (e) {}
+  const T = ['Walk to a building door and press E to go inside and collect cash 💵', 'Press E next to a car, bike or cycle to drive it', 'Open ☰ Menu for Map, Shop, Bag, Car Shop and emotes', 'Your Aura drops when you get hurt - buy medicine at the Shop', 'Tap 🎤 to talk and 🔊 to hear others (log in first)', 'Collect 🎈 balloons around the city and spend them at the Shop', 'Desktop: WASD to move, drag the mouse to look around'];
+  let i = 0; const show = () => { txt.textContent = '💡 ' + T[i++ % T.length]; }; show(); setInterval(show, 9000);
+  document.getElementById('hint-close').onclick = () => { bar.style.display = 'none'; try { localStorage.setItem('hintsOff', '1'); } catch (e) {} };
 })();
 </script>
 </body>
