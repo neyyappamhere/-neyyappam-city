@@ -575,6 +575,8 @@
     #mobile-menu #account-pill #account-name{ max-width:none !important; }
     #mobile-menu #account-pill button{ flex:0 0 auto !important; min-height:34px !important; padding:6px 14px !important; }
   }
+  #radio-menu-btn,#radio-next-btn{ position:absolute; top:64px; z-index:5; background:var(--card); color:var(--text); border:1px solid var(--border); border-radius:24px; padding:9px 16px; font-weight:700; font-size:.82em; cursor:pointer; }
+  #radio-menu-btn{ left:548px; } #radio-next-btn{ left:690px; }
 </style>
 </head>
 <body>
@@ -652,6 +654,7 @@
 <button id="shop-btn"><i class="fa-solid fa-store"></i> Shop</button>
 <button id="inventory-btn"><i class="fa-solid fa-bag-shopping"></i> Bag</button>
 <button id="private-btn"><i class="fa-solid fa-lock"></i> Private</button>
+<button id="radio-menu-btn" type="button">📻 Radio: OFF</button><button id="radio-next-btn" type="button" style="display:none">⏭ Next</button>
 
 <button id="ambulance-btn"><i class="fa-solid fa-truck-medical"></i> Call Ambulance (25 🎈)</button>
 
@@ -1841,7 +1844,7 @@ function addBanana(x, z) { bananaSpots.push({ x, z }); }
 function addKeralaHouse(cx, cz, footprint) {
   const w = footprint * (0.55 + Math.random()*0.2), h = 3.6 + Math.random()*2.2;
   const body = new THREE.Mesh(new THREE.BoxGeometry(w, h, w), kMat(houseColors[Math.floor(Math.random()*houseColors.length)]));
-  body.position.set(cx, 0.25 + h/2, cz); scene.add(body);
+  body.position.set(cx, 0.25 + h/2, cz); scene.add(body); HOUSES.push({ x: cx, z: cz, r: w * 0.62 });
   const roof = new THREE.Mesh(roofGeo, Math.random() > 0.5 ? roofMat : roofMat2);
   const r = (w + 1.2) * 0.7071;
   roof.scale.set(r, 2.6, r); roof.rotation.y = Math.PI/4; roof.position.set(cx, 0.25 + h + 1.3, cz); scene.add(roof);
@@ -2668,7 +2671,7 @@ function showEmote(id, type) {
   const sp = emojiSprite(EMOJI[type] || '✨', 0.9); sp.position.set(0, 2.45, 0); g.add(sp);
   emoteSprites.push({ sp, g, until: now + 2600 });
   const v = earVol(g.position.x, g.position.z, 30);
-  if (type === 'laugh') SND.laugh(v); else if (type === 'aiyyo') SND.aiyyo(v);
+  if (type === 'laugh') SND.laugh(v); else if (type === 'aiyyo') SND.shout(v, (id === socket.id ? myGender : (others[id] && others[id].target.gender)) === 'female');
 }
 let kissFreeze = 0;
 function kissFx(fromId, toId) {
@@ -2826,9 +2829,10 @@ function keralaTick(t) {
   teaFx.note.visible = radioState.on; teaFx.note.position.y = 1.0 + Math.sin(t*2.5)*0.08;
   const gate = document.getElementById('name-gate').style.display !== 'none';
   const d = radioDistance(), sts = radioState.stations || [];
-  const idx = sts.length ? radioState.station % sts.length : -1;
+  const mine = window.myRadio && window.myRadio.on;
+  const idx = sts.length ? (mine ? window.myRadio.station : radioState.station) % sts.length : -1;
   const prox = Math.max(0, Math.min(1, 1 - (d - 3) / (RADIO_HEAR_RANGE - 3)));
-  const vol = (soundOn && !gate && radioState.on && idx >= 0 && !sts[idx].down) ? prox : 0;
+  const vol = (soundOn && !gate && (mine || radioState.on) && idx >= 0 && !sts[idx].down) ? (mine ? 0.85 : prox) : 0;
   if (vol > 0.03) {
     if (radioLoaded !== idx && nowMs > radioRetryAt) { radioAudio.src = '/radio/stream/' + sts[idx].id + '?s=' + nowMs; radioLoaded = idx; radioStatus = 'connecting'; }
     if (radioLoaded === idx) {
@@ -2839,7 +2843,7 @@ function keralaTick(t) {
     radioAudio.pause(); radioAudio.removeAttribute('src'); radioAudio.load(); radioLoaded = -1; radioStatus = 'idle';
   }
   const chip = document.getElementById('radio-chip');
-  if (!gate && radioState.on && d < RADIO_HEAR_RANGE) {
+  if (!gate && (mine || (radioState.on && d < RADIO_HEAR_RANGE))) {
     const nm = idx >= 0 ? sts[idx].name : '';
     chip.textContent = idx < 0 ? '📻 No stations yet…'
       : sts[idx].down ? '📻 ' + nm + ' — off air, skipping…'
@@ -3490,11 +3494,14 @@ function updateDriving() {
   if (Math.abs(carSpeed) > 0.005) {
     c.group.rotation.y += steer * turnRate * (carSpeed > 0 ? 1 : -1);
   }
+  const ox = c.group.position.x, oz = c.group.position.z;
   const forward = { x: Math.cos(c.group.rotation.y), z: -Math.sin(c.group.rotation.y) };
   c.group.position.x += forward.x * carSpeed;
   c.group.position.z += forward.z * carSpeed;
   stats.distanceTraveled += Math.abs(carSpeed);
   if (c.group.position.x > RIVER.x1 - 2.5) { c.group.position.x = RIVER.x1 - 2.5; carSpeed = 0; }
+  crashCheck(c, ox, oz);
+  if (!c.rider) { myAvatar.position.x = c.group.position.x; myAvatar.position.z = c.group.position.z; }   // keeps the mini-map and sounds following the car
 
   const camDist = 7;
   camera.position.x = c.group.position.x - forward.x * camDist * Math.cos(camPitch);
@@ -4819,7 +4826,7 @@ addEventListener('resize', () => {
 /* ---- Mobile UI: on small screens the tool buttons move into one Menu panel ---- */
 (function mobileUi() {
   const mq = matchMedia('(max-width:700px)'), menu = document.getElementById('mobile-menu'), tg = document.getElementById('menu-toggle');
-  const ids = ['account-pill', 'carshop-btn', 'map-btn', 'stats-btn', 'shop-btn', 'inventory-btn', 'private-btn', 'emote-dance', 'emote-laugh', 'emote-aiyyo'], home = {}, LAB = { 'emote-dance': '💃 Dance', 'emote-laugh': '😂 Laugh', 'emote-aiyyo': '😱 Aiyyo' };
+  const ids = ['account-pill', 'carshop-btn', 'radio-menu-btn', 'radio-next-btn', 'map-btn', 'stats-btn', 'shop-btn', 'inventory-btn', 'private-btn', 'emote-dance', 'emote-laugh', 'emote-aiyyo'], home = {}, LAB = { 'emote-dance': '💃 Dance', 'emote-laugh': '😂 Laugh', 'emote-aiyyo': '😱 Aiyyo' };
   ids.forEach(id => { const el = document.getElementById(id); if (el) home[id] = { el, parent: el.parentNode, next: el.nextSibling, txt: el.textContent }; });
   function layout() {
     if (mq.matches) Object.entries(home).forEach(([id, h]) => { menu.appendChild(h.el); if (LAB[id]) h.el.textContent = LAB[id]; });
@@ -4857,6 +4864,74 @@ addEventListener('resize', () => {
   document.getElementById('hint-close').onclick = () => { bar.style.display = 'none'; try { localStorage.setItem('hintsOff', '1'); } catch (e) {} };
 })();
 document.getElementById('splash').addEventListener('animationend', e => { if (e.animationName === 'splashFadeOut') e.currentTarget.remove(); });
+/* ---- Personal radio (only you hear it), vehicle crashes (aura loss + shout), 3 more private places ---- */
+window.myRadio = { on: false, station: 0 };
+(function personalRadio() {
+  const b = document.getElementById('radio-menu-btn'), n = document.getElementById('radio-next-btn');
+  const paint = () => { b.textContent = window.myRadio.on ? '📻 Radio: ON' : '📻 Radio: OFF'; n.style.display = window.myRadio.on ? '' : 'none'; };
+  b.onclick = () => {
+    const R = window.myRadio; if (!R.on && !(radioState.stations || []).length) { showToast('📻 Radio stations are still loading - try again in a moment'); return; }
+    R.on = !R.on; if (R.on && !soundOn) document.getElementById('sound-btn').click(); paint(); showToast(R.on ? '📻 Radio on - only you can hear it' : '📻 Radio off');
+  };
+  n.onclick = () => { const k = (radioState.stations || []).length; if (k) window.myRadio.station = (window.myRadio.station + 1) % k; };
+  paint();
+})();
+['shout_m1', 'shout_m2', 'shout_f1', 'shout_f2', 'crash'].forEach(n => SAMPLE_NAMES.push(n));   // optional files: public/sounds/shout_m1.mp3 ...
+SND.shout = (v, fem) => {
+  const names = (fem ? ['shout_f1', 'shout_f2'] : ['shout_m1', 'shout_m2']).filter(n => SAMPLES[n]);
+  if (names.length && playSample(names[Math.floor(Math.random() * names.length)], v * 1.2)) return;
+  const k = fem ? 1 : 0.62;
+  vox({ f: [230 * k, 280 * k], dur: 0.38, vol: 0.45 * v, formants: [[700, 5, 1, 350], [1200, 6, 0.7, 2300]], noise: 0.05, at: 0.03 });
+  vox({ f: [270 * k, 190 * k], dur: 0.5, vol: 0.45 * v, formants: [[450, 5], [800, 6, 0.6]], vib: [6, 8], at: 0.04, t0: 0.3 });
+};
+SND.crash = (v) => { if (playSample('crash', v * 1.2)) return; vox({ type: 'sawtooth', f: [120, 45], dur: 0.3, vol: 0.55 * v, formants: [[220, 2], [900, 2, 0.5]], noise: 0.7, at: 0.004 }); };
+function buildBackwaters(g) {
+  pplane(g, 400, 400, 0x2c9bd6, 0, 0.02, 0, { roughness: 0.2 }); pbox(g, 16, 0.3, 16, 0x8b5a2b, 0, 0.15, 6);
+  const hb = new THREE.Group(); hb.position.set(0, 0, -9); g.add(hb);
+  pbox(hb, 12, 1.2, 4, 0x6b4423, 0, 0.6, 0); pbox(hb, 10, 1.5, 3.4, 0xe8d7b0, 0, 1.95, 0);
+  pbox(hb, 11, 0.18, 2.6, 0xc2a060, 0, 3.0, -1.0).rotation.x = 0.5; pbox(hb, 11, 0.18, 2.6, 0xc2a060, 0, 3.0, 1.0).rotation.x = -0.5;
+  [-3, 0, 3].forEach(x => psph(hb, 0.2, 0xffd27a, x, 2.4, 1.9, { emissive: 0xffd27a, emissiveIntensity: 1 }));
+  [[-14, -4], [15, -8], [-16, 12], [18, 10]].forEach(p => { pdisc(g, 4, 0x79ad4a, 0.05).position.set(p[0], 0.05, p[1]); ppalm(g, p[0], p[1]); ppalm(g, p[0] + 1.5, p[1] + 1); });
+  pbox(g, 3.5, 0.35, 1, 0x7a4a24, -9, 0.2, 10); pbench(g, 3, 8); psign(g, '🛶 Houseboat', 5.4, -9, 8);
+  return { radius: 7.5, bg: 0x9fd8ff, fog: [0xcfeaff, 40, 160] };
+}
+function buildMunnar(g) {
+  pdisc(g, 80, 0x4a9d3a, -0.02);
+  for (let r = 0; r < 14; r++) pbox(g, 30, 0.7, 1.4, 0x2f8a3a, -8 + (r % 2) * 3, 0.35, -18 + r * 2.6).rotation.y = 0.15;
+  [[-45, -30, 22], [40, -40, 28], [-20, -60, 30], [60, 10, 20]].forEach(h => psph(g, h[2], 0x3a8f35, h[0], 0, h[1], null, 0.55));
+  pbox(g, 7, 0.25, 7, 0x8b5a2b, 0, 0.12, 4); pbench(g, 0, 7); pbench(g, 3, 5); plamp(g, -3, 5);
+  for (let i = 0; i < 10; i++) ptree(g, -26 + srnd(i) * 52, -14 - srnd(i + 9) * 18, 1.2);
+  psign(g, '🍃 Munnar Tea Hills', 6, -6, 9);
+  return { radius: 22, bg: 0xcfe6f0, fog: [0xdfeef3, 18, 90] };
+}
+function buildRooftop(g) {
+  pbox(g, 44, 0.4, 44, 0x2b2d3a, 0, -0.2, 0);
+  [[0, -21, 44, 0.5], [0, 21, 44, 0.5], [-21, 0, 0.5, 44], [21, 0, 0.5, 44]].forEach(w => pbox(g, w[2], 1.1, w[3], 0x3a3d4d, w[0], 0.55, w[1]));
+  for (let i = 0; i < 40; i++) { const a = i / 40 * Math.PI * 2, r = 45 + srnd(i) * 40, h = 14 + srnd(i + 5) * 40; pbox(g, 7, h, 7, 0x151a30, Math.cos(a) * r, h / 2 - 12, Math.sin(a) * r); for (let k = 0; k < 4; k++) psph(g, 0.3, 0xffe9a8, Math.cos(a) * r + (k - 1.5) * 1.4, h * (0.2 + 0.2 * k) - 12, Math.sin(a) * r + 3.6, { emissive: 0xffe9a8, emissiveIntensity: 1 }); }
+  for (let i = 0; i < 16; i++) psph(g, 0.14, [0xffd23f, 0xff7aa8, 0x7ad9ff][i % 3], -9 + i * 1.2, 3.4 - Math.sin(i / 15 * Math.PI) * 0.7, -10, { emissive: 0xffd23f, emissiveIntensity: 1 });
+  pbench(g, -6, 6); pbench(g, 6, 6); pbench(g, 0, -4); plamp(g, -8, -2, 0xffd27a); plamp(g, 8, -2, 0xffd27a);
+  psph(g, 4, 0xfff2c0, 40, 40, -90, { emissive: 0xfff2c0, emissiveIntensity: 1 }); psign(g, '🌃 Night Rooftop', 5.2, -14, 9); plight(g, 0xffd9a0, 1.0, 40, 0, 4, 0);
+  return { radius: 17, bg: 0x070b22, fog: [0x070b22, 40, 160] };
+}
+Object.assign(PRIVATE_SCENES, { backwaters: buildBackwaters, munnar: buildMunnar, rooftop: buildRooftop });
+PRIV_PLACES.push({ id: 'backwaters', name: 'Houseboat', emoji: '🛶' }, { id: 'munnar', name: 'Munnar Tea Hills', emoji: '🍃' }, { id: 'rooftop', name: 'Night Rooftop', emoji: '🌃' });
+const HOUSES = [];
+let _crashAt = 0;
+function crashCheck(c, ox, oz) {   // driving into a house, another vehicle, a pedestrian or a player: bounce back, lose aura, and shout
+  const p = c.group.position, sp = Math.abs(carSpeed), me = c.kind === 'bike' ? 0.9 : c.kind === 'cycle' ? 0.7 : c.isCart ? 1.8 : 1.3;
+  let hit = false;
+  for (const h of HOUSES) if (Math.hypot(p.x - h.x, p.z - h.z) < h.r + me * 0.6) { hit = true; break; }
+  if (!hit) for (const id in cars) { const o = cars[id]; if (o === c || o.isPlane) continue; const r = o.kind === 'bike' ? 0.9 : o.kind === 'cycle' ? 0.7 : o.isCart ? 1.8 : 1.3; if (Math.hypot(p.x - o.group.position.x, p.z - o.group.position.z) < (r + me) * 0.85) { hit = true; break; } }
+  if (!hit) for (const q of PEDS) if (q.g.visible && Math.hypot(p.x - q.g.position.x, p.z - q.g.position.z) < me * 0.6 + 0.6) { hit = true; break; }
+  if (!hit) for (const id in others) { const o = others[id].group; if (o.visible && Math.hypot(p.x - o.position.x, p.z - o.position.z) < me * 0.6 + 0.6) { hit = true; break; } }
+  if (!hit) return;
+  p.x = ox; p.z = oz; carSpeed = -carSpeed * 0.3;
+  const now = performance.now();
+  if (sp > 0.06 && now > _crashAt) {
+    _crashAt = now + 1500; applyDamage(Math.min(40, (8 + sp * 100) * (c.kind === 'bike' || c.kind === 'cycle' ? 1.3 : 1)), 'crash');
+    showToast('💥 Crash!'); SND.crash(earVol(p.x, p.z, 30)); socket.emit('emote', { type: 'aiyyo' });
+  }
+}
 </script>
 </body>
 </html>
