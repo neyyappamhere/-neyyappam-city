@@ -559,6 +559,22 @@
   #account-pill{ padding:3px 3px 3px 9px !important; gap:6px !important; font-size:.7em !important; max-width:118px !important; }
   #account-name{ max-width:54px !important; } #account-pill button{ padding:4px 9px !important; font-size:.9em !important; border-radius:12px !important; }
   @media (max-width:700px){ .aura-lbl{ display:none; } #health-pill::before{ content:'✨'; } }
+  /* ===== Mobile v3: one tidy top row (logo, Aura, balloons, cash); account moves into the Menu; map sits below the row ===== */
+  @media (max-width:700px){
+    #topbar{ align-items:center !important; }
+    #hud-right{ flex-wrap:nowrap !important; gap:4px !important; max-width:none !important; }
+    #balloon-pill i{ display:none; }
+    #balloon-pill,#cash-pill{ padding:4px 8px !important; }
+    #menu-toggle{ padding:6px 12px !important; font-size:.74em !important; top:calc(46px + env(safe-area-inset-top)) !important; }
+    #mic-btn,#sound-btn{ top:calc(46px + env(safe-area-inset-top)) !important; width:32px !important; height:32px !important; }
+    #mic-btn{ left:92px !important; } #sound-btn{ left:130px !important; }
+    #minimap{ top:calc(48px + env(safe-area-inset-top)) !important; width:76px !important; height:76px !important; right:8px !important; }
+    #radio-chip{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:calc(100% - 100px) !important; top:calc(88px + env(safe-area-inset-top)) !important; }
+    #free-look-btn{ display:none !important; }
+    #mobile-menu #account-pill{ flex:1 1 100%; max-width:none !important; justify-content:space-between; padding:6px 6px 6px 12px !important; font-size:.8em !important; }
+    #mobile-menu #account-pill #account-name{ max-width:none !important; }
+    #mobile-menu #account-pill button{ flex:0 0 auto !important; min-height:34px !important; padding:6px 14px !important; }
+  }
 </style>
 </head>
 <body>
@@ -1643,7 +1659,7 @@ document.body.appendChild(_exitBtn);
 const _fl = document.createElement('button'); _fl.textContent = '🎥 Free look';
 _fl.style.cssText = 'position:fixed;right:12px;bottom:52px;padding:7px 12px;border:0;border-radius:16px;background:rgba(20,10,40,.8);color:#fff;font:600 12px sans-serif;z-index:50;cursor:pointer';
 _fl.onclick = () => { renderer.domElement.requestPointerLock && renderer.domElement.requestPointerLock(); showToast('Move the mouse to look around. Press Esc to get your cursor back.'); };
-document.body.appendChild(_fl); if (matchMedia('(pointer:coarse)').matches) _fl.style.display = 'none';   // free look is for mouse users
+_fl.id = 'free-look-btn'; document.body.appendChild(_fl); if (matchMedia('(pointer:coarse)').matches) _fl.style.display = 'none';   // free look is for mouse users
 addEventListener('mousemove', e => { if (document.pointerLockElement === renderer.domElement) { camYaw -= e.movementX * 0.003; camPitch = Math.max(-1.1, Math.min(1.45, camPitch + e.movementY * 0.003)); } });
 addEventListener('wheel', e => { if (e.target === renderer.domElement) window._camDist = Math.max(3, Math.min(12, (window._camDist || 6) + e.deltaY * 0.004)); }, { passive: true });
 function camSafety() {   // keep the camera above ground, and inside the room when indoors, then re-aim
@@ -4803,11 +4819,11 @@ addEventListener('resize', () => {
 /* ---- Mobile UI: on small screens the tool buttons move into one Menu panel ---- */
 (function mobileUi() {
   const mq = matchMedia('(max-width:700px)'), menu = document.getElementById('mobile-menu'), tg = document.getElementById('menu-toggle');
-  const ids = ['carshop-btn', 'map-btn', 'stats-btn', 'shop-btn', 'inventory-btn', 'private-btn', 'emote-dance', 'emote-laugh', 'emote-aiyyo'], home = {}, LAB = { 'emote-dance': '💃 Dance', 'emote-laugh': '😂 Laugh', 'emote-aiyyo': '😱 Aiyyo' };
+  const ids = ['account-pill', 'carshop-btn', 'map-btn', 'stats-btn', 'shop-btn', 'inventory-btn', 'private-btn', 'emote-dance', 'emote-laugh', 'emote-aiyyo'], home = {}, LAB = { 'emote-dance': '💃 Dance', 'emote-laugh': '😂 Laugh', 'emote-aiyyo': '😱 Aiyyo' };
   ids.forEach(id => { const el = document.getElementById(id); if (el) home[id] = { el, parent: el.parentNode, next: el.nextSibling, txt: el.textContent }; });
   function layout() {
     if (mq.matches) Object.entries(home).forEach(([id, h]) => { menu.appendChild(h.el); if (LAB[id]) h.el.textContent = LAB[id]; });
-    else { Object.values(home).forEach(h => { h.parent.insertBefore(h.el, h.next && h.next.parentNode === h.parent ? h.next : null); h.el.textContent = h.txt; }); menu.classList.remove('open'); }
+    else { Object.entries(home).forEach(([id, h]) => { h.parent.insertBefore(h.el, h.next && h.next.parentNode === h.parent ? h.next : null); if (LAB[id]) h.el.textContent = h.txt; }); menu.classList.remove('open'); }
   }
   tg.onclick = () => menu.classList.toggle('open');
   menu.addEventListener('click', e => { const b = e.target.closest('button'); if (b && !/^(mic|sound)-btn$/.test(b.id)) setTimeout(() => menu.classList.remove('open'), 60); });
