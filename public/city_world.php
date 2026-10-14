@@ -1643,7 +1643,7 @@ function upgradeToModel(c, kind, entry) {
   });
 }
 /* ---- Phase 4: cash (game-only money) collected inside buildings + car shop (buy / rent). Cash lives in MySQL via server.js -> ajax/city_cash.php ---- */
-const DOORS = [], CASH_ROOM = { x: 8000, z: 8000 }, PILE_OFFS = [[-4, -4], [4, -4], [0, 0], [-4, 4], [4, 4], [0, -5]];
+const DOORS = [], HOUSES = [], CASH_ROOM = { x: 8000, z: 8000 }, PILE_OFFS = [[-4, -4], [4, -4], [0, 0], [-4, 4], [4, 4], [0, -5]];
 const PREMIUM = { sport_coupe: { url: 'models/premium/sport-coupe.glb', len: 3.8 }, luxury_suv: { url: 'models/premium/luxury-suv.glb', len: 4.0 }, exec_sedan: { url: 'models/premium/exec-sedan.glb', len: 4.0 } };
 let inCashRoom = false, cashBack = null, myOwned = [], carCatalog = {}, nearDoor = null; const cashPileMeshes = [];
 (function buildCashRoom() {
@@ -4915,7 +4915,6 @@ function buildRooftop(g) {
 }
 Object.assign(PRIVATE_SCENES, { backwaters: buildBackwaters, munnar: buildMunnar, rooftop: buildRooftop });
 PRIV_PLACES.push({ id: 'backwaters', name: 'Houseboat', emoji: '🛶' }, { id: 'munnar', name: 'Munnar Tea Hills', emoji: '🍃' }, { id: 'rooftop', name: 'Night Rooftop', emoji: '🌃' });
-const HOUSES = [];
 let _crashAt = 0;
 function crashCheck(c, ox, oz) {   // driving into a house, another vehicle, a pedestrian or a player: bounce back, lose aura, and shout
   const p = c.group.position, sp = Math.abs(carSpeed), me = c.kind === 'bike' ? 0.9 : c.kind === 'cycle' ? 0.7 : c.isCart ? 1.8 : 1.3;
