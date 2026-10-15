@@ -5033,10 +5033,15 @@ function openChar(first) {
 function closeChar() { coOn = false; $c('char-overlay').classList.remove('open'); }
 $c('co-close').onclick = closeChar;
 $c('co-confirm').onclick = () => {
-  const id = coSel, btn = $c('co-confirm'); btn.disabled = true;
+  const id = coSel, btn = $c('co-confirm'); btn.disabled = true; btn.textContent = 'Saving…'; let done = false;
+  const t = setTimeout(() => {   // no answer: the server has no character support yet
+    if (done) return; done = true; window._myChar = id; rebuildMyAvatar(); closeChar();
+    showToast('⚠ Applied on this screen but NOT saved - the game server has no character support yet (run apply_progress_patch.js and redeploy server.js)');
+  }, 4000);
   socket.emit('selectCharacter', { charId: id }, (r) => {
+    if (done) return; done = true; clearTimeout(t);
     if (r && r.ok) { window._myChar = id; window._prog = Object.assign(window._prog, r.state); rebuildMyAvatar(); closeChar(); showToast('✅ ' + CHAR_DEFS[id].name + ' selected - saved to your account'); }
-    else { showToast((r && r.error) || 'Could not save'); btn.disabled = false; }
+    else { showToast((r && r.error) || 'Could not save'); btn.disabled = false; btn.textContent = 'Select this character'; }
   });
 };
 $c('char-btn').onclick = () => openChar(false);
