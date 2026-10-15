@@ -577,6 +577,22 @@
   }
   #radio-menu-btn,#radio-next-btn{ position:absolute; top:64px; z-index:5; background:var(--card); color:var(--text); border:1px solid var(--border); border-radius:24px; padding:9px 16px; font-weight:700; font-size:.82em; cursor:pointer; }
   #radio-menu-btn{ left:548px; } #radio-next-btn{ left:690px; }
+  /* ===== Character selection ===== */
+  #char-overlay{ position:fixed; inset:0; z-index:70; display:none; background:radial-gradient(circle at 30% 20%, rgba(254,1,154,.25), transparent 55%), var(--bg); color:var(--text); }
+  #char-overlay.open{ display:flex; }
+  #char-overlay .co-main{ flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:16px; min-width:0; }
+  #co-canvas{ width:100%; max-width:380px; height:min(52vh,420px); touch-action:none; cursor:grab; }
+  #co-name{ font:800 1.4em 'Syne',sans-serif; margin-top:6px; text-align:center; } #co-desc{ font-size:.85em; color:var(--muted); text-align:center; max-width:340px; margin:4px 0 8px; }
+  #co-lock{ font-size:.82em; font-weight:700; color:var(--gold); text-align:center; min-height:1.2em; }
+  .co-prog{ width:220px; height:6px; background:rgba(255,255,255,.15); border-radius:4px; overflow:hidden; margin:6px auto 0; } .co-prog i{ display:block; height:100%; background:linear-gradient(90deg,#FE019A,#FFD700); }
+  #co-confirm{ margin-top:10px; padding:12px 28px; border:0; border-radius:14px; font-weight:800; color:#fff; background:linear-gradient(135deg,#FE019A,#9b5de5); cursor:pointer; font-size:.95em; font-family:inherit; } #co-confirm:disabled{ opacity:.45; cursor:not-allowed; }
+  #co-close{ position:absolute; top:calc(12px + env(safe-area-inset-top)); right:14px; border:0; background:rgba(255,255,255,.14); color:#fff; width:38px; height:38px; border-radius:50%; font-size:1em; cursor:pointer; z-index:2; }
+  #co-list{ width:300px; overflow-y:auto; padding:14px; display:grid; grid-template-columns:1fr 1fr; gap:8px; align-content:start; border-left:1px solid var(--border); background:rgba(0,0,0,.25); }
+  .co-card{ background:var(--card); border:2px solid var(--border); border-radius:14px; padding:10px 6px; color:var(--text); font-weight:700; font-size:.78em; cursor:pointer; font-family:inherit; text-align:center; }
+  .co-card .ic{ display:block; font-size:1.6em; } .co-card.sel{ border-color:var(--pk); background:linear-gradient(135deg,rgba(254,1,154,.3),rgba(155,93,229,.3)); } .co-card.locked{ opacity:.6; }
+  #char-btn{ position:absolute; top:64px; left:848px; z-index:5; background:var(--card); color:var(--text); border:1px solid var(--border); border-radius:24px; padding:9px 16px; font-weight:700; font-size:.82em; cursor:pointer; }
+  @media (max-width:700px){ #char-overlay{ flex-direction:column; } #co-canvas{ height:34vh; } #char-overlay .co-main{ padding:8px; flex:0 0 auto; }
+    #co-list{ width:auto; border-left:0; border-top:1px solid var(--border); grid-template-columns:repeat(4,1fr); flex:1; padding:8px; } .co-card{ padding:6px 2px; font-size:.65em; } .co-card .ic{ font-size:1.3em; } }
 </style>
 </head>
 <body>
@@ -654,6 +670,7 @@
 <button id="shop-btn"><i class="fa-solid fa-store"></i> Shop</button>
 <button id="inventory-btn"><i class="fa-solid fa-bag-shopping"></i> Bag</button>
 <button id="private-btn"><i class="fa-solid fa-lock"></i> Private</button>
+<button id="char-btn" type="button">🧑 Character</button>
 <button id="radio-menu-btn" type="button">📻 Radio: OFF</button><button id="radio-next-btn" type="button" style="display:none">⏭ Next</button>
 
 <button id="ambulance-btn"><i class="fa-solid fa-truck-medical"></i> Call Ambulance (25 🎈)</button>
@@ -716,6 +733,7 @@
     <div class="stat-row"><span>Cars driven</span><span id="stat-cars">0</span></div>
     <div class="set-sec" id="set-sec">
       <h4>Character settings</h4>
+      <button type="button" id="set-char-btn" class="set-pill" style="width:100%;margin-bottom:8px">🧑 Change character (saved to your account)</button>
       <div class="set-row" id="set-gender">
         <button type="button" class="set-pill" data-sg="male">Male</button>
         <button type="button" class="set-pill" data-sg="female">Female</button>
@@ -939,6 +957,7 @@
   </div>
 </div>
 
+<div id="char-overlay"><button id="co-close" type="button" aria-label="Close">✕</button><div class="co-main"><canvas id="co-canvas"></canvas><div id="co-name"></div><div id="co-desc"></div><div id="co-lock"></div><button id="co-confirm" type="button">Select this character</button></div><div id="co-list"></div></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/utils/SkeletonUtils.js"></script>
@@ -1764,6 +1783,39 @@ setTimeout(() => {
   if (h.includes('stars') && typeof stars !== 'undefined') stars.visible = false;
   if (h[0]) showToast('Debug: hiding ' + h.join(', '));   // proves this new version is the one running
 }, 1500);
+/* ---- Stage 1+3: character presets (uniform + accessories on the current characters; real models can replace them later) ---- */
+const PI2 = Math.PI / 2;
+const CHAR_DEFS = {
+  common_man: { name: 'Common Man', icon: '🧑', desc: 'An everyday civilian in a simple shirt and trousers.', shirt: '#4b84c4', pants: 0x2e2e38 },
+  young_boy: { name: 'Young Boy', icon: '👦', desc: 'Casual modern clothing, always up for fun.', shirt: '#ff8a3d', pants: 0x3d5a80, h: 0.9 },
+  police: { name: 'Police Officer', icon: '👮', desc: 'Kerala police-inspired khaki uniform. Patrols, traffic and emergency roleplay.', shirt: '#b9a56a', pants: 0x6d5f3a, acc: [
+    ['h', 'cyl', [0.115, 0.12, 0.09, 16], 0x8a7a4a, [0, 0.115, 0]], ['h', 'box', [0.2, 0.012, 0.12], 0x1b1b1b, [0, 0.07, 0.1]], ['b', 'box', [0.05, 0.06, 0.02], 0xe0b030, [-0.1, 1.28, 0.125]], ['b', 'tor', [0.19, 0.016, 6, 20], 0x1a1a1a, [0, 0.93, 0], [PI2, 0, 0], [1, 0.72, 1]]] },
+  chayakkadakkaran: { name: 'Chayakkadakkaran', icon: '🍵', desc: 'Traditional tea-shop owner in a mundu and shirt, with a towel on the shoulder.', shirt: '#f4f1e8', pants: 0xf4f1e8, acc: [
+    ['b', 'cyl', [0.19, 0.27, 0.62, 18], 0xf6f3ea, [0, 0.64, 0]], ['b', 'tor', [0.27, 0.014, 6, 24], 0xd4a017, [0, 0.345, 0], [PI2, 0, 0]], ['b', 'box', [0.1, 0.5, 0.035], 0xc0392b, [-0.2, 1.27, 0.12], [0, 0, 0.12]]] },
+  ksrtc_driver: { name: 'KSRTC Bus Driver', icon: '🚌', desc: 'KSRTC-style khaki uniform with a red badge. Drives the red-and-yellow buses.', shirt: '#c9b98a', pants: 0x57573f, acc: [
+    ['b', 'box', [0.05, 0.07, 0.02], 0xcc2020, [0.09, 1.28, 0.125]], ['b', 'tor', [0.19, 0.014, 6, 20], 0x1a1a1a, [0, 0.93, 0], [PI2, 0, 0], [1, 0.72, 1]]] },
+  ksrtc_conductor: { name: 'KSRTC Conductor', icon: '🎫', desc: 'Khaki uniform with a leather ticket bag and ticket machine.', shirt: '#c9b98a', pants: 0x57573f, acc: [
+    ['b', 'box', [0.16, 0.2, 0.1], 0x3a2515, [0.2, 0.95, 0]], ['b', 'box', [0.1, 0.14, 0.05], 0x2b2b2b, [0.12, 1.12, 0.14]], ['b', 'box', [0.03, 0.5, 0.03], 0x3a2515, [0, 1.2, 0.12], [0, 0, 0.9]]] },
+  auto_driver: { name: 'Auto-Rickshaw Driver', icon: '🛺', desc: 'Kerala-style khaki shirt with a towel around the neck.', shirt: '#d8cfa5', pants: 0x6b5f3c, acc: [
+    ['b', 'tor', [0.075, 0.02, 6, 12], 0xffffff, [0, 1.52, 0], [PI2, 0, 0]], ['b', 'box', [0.05, 0.04, 0.02], 0xf2c230, [0.09, 1.28, 0.125]]] },
+  shopkeeper: { name: 'Shopkeeper', icon: '🏪', desc: 'Local shopkeeper in a neat shirt and a green apron.', shirt: '#f2ead3', pants: 0x3d3a33, acc: [['b', 'box', [0.3, 0.55, 0.03], 0x2f7a4a, [0, 1.05, 0.125]]] },
+  doctor: { name: 'Doctor', icon: '🩺', desc: 'White coat, stethoscope and a red-cross badge.', shirt: '#f5f7f9', pants: 0x2b3a55, acc: [
+    ['b', 'cyl', [0.17, 0.24, 0.5, 18], 0xf5f7f9, [0, 0.72, 0]], ['b', 'tor', [0.12, 0.012, 6, 16], 0x222222, [0, 1.4, 0.07], [1.3, 0, 0]], ['b', 'box', [0.05, 0.05, 0.02], 0xd62828, [0.09, 1.28, 0.125]]] },
+  mechanic: { name: 'Mechanic', icon: '🔧', desc: 'Blue workshop overalls, a tool belt and an orange cap.', shirt: '#2f5fa8', pants: 0x2f5fa8, acc: [
+    ['b', 'tor', [0.19, 0.025, 6, 20], 0x5a3a1a, [0, 0.9, 0], [PI2, 0, 0], [1, 0.72, 1]], ['h', 'cyl', [0.112, 0.115, 0.05, 16], 0xe07a1f, [0, 0.1, 0]]] },
+  security_guard: { name: 'Security Guard', icon: '💂', desc: 'Professional navy uniform with a cap, badge and belt.', shirt: '#23304d', pants: 0x14192a, acc: [
+    ['h', 'cyl', [0.115, 0.12, 0.08, 16], 0x14192a, [0, 0.11, 0]], ['h', 'box', [0.2, 0.012, 0.11], 0x0b0f1a, [0, 0.075, 0.1]], ['b', 'box', [0.05, 0.06, 0.02], 0xcfd3da, [-0.1, 1.28, 0.125]], ['b', 'tor', [0.19, 0.016, 6, 20], 0x1a1a1a, [0, 0.93, 0], [PI2, 0, 0], [1, 0.72, 1]]] },
+};
+const charLook = (id, role) => (id && !role && CHAR_DEFS[id]) ? { char: id } : undefined;
+function applyCharacter(group, id) {
+  const cd = CHAR_DEFS[id], u = group.userData; if (!cd || !cd.acc) return;
+  cd.acc.forEach(a => {
+    const [pt, kind, sz, col, pos, rot, scl] = a;
+    const geo = kind === 'box' ? new THREE.BoxGeometry(...sz) : kind === 'cyl' ? new THREE.CylinderGeometry(...sz) : new THREE.TorusGeometry(...sz);
+    const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: col, roughness: 0.7 })); m.position.set(...pos);
+    if (rot) m.rotation.set(...rot); if (scl) m.scale.set(...scl); m.castShadow = true; (pt === 'h' ? u.head : u.body).add(m);
+  });
+}
 function addParkedCar(x, z, rotY) {
   const group = new THREE.Group();
   const color = carColors[Math.floor(Math.random()*carColors.length)];
@@ -2983,6 +3035,7 @@ function shirtTex(color, type) {
 
 function makeAvatarMesh(gender, outfitColor, hairStyle, role, look) {
   look = look || {};
+  const cd = look.char && CHAR_DEFS[look.char]; if (cd) { outfitColor = cd.shirt; look = Object.assign({}, look, { plain: true, pants: cd.pants, h: cd.h }); }
   const isF = gender === 'female' || role === 'karavakkari';
   const mature = role === 'karavakkari';
   const color = outfitColor ? parseInt(String(outfitColor).replace('#', ''), 16) : (genderColors[gender] || genderColors.other);
@@ -3003,7 +3056,7 @@ function makeAvatarMesh(gender, outfitColor, hairStyle, role, look) {
     ? (mature ? [[0.001,0.84],[0.158,0.86],[0.195,0.94],[0.165,1.02],[0.122,1.12],[0.14,1.22],[0.158,1.30],[0.145,1.38],[0.12,1.45],[0.05,1.49],[0.001,1.5]]
               : [[0.001,0.84],[0.15,0.86],[0.18,0.94],[0.15,1.02],[0.115,1.12],[0.13,1.22],[0.148,1.30],[0.14,1.38],[0.12,1.45],[0.05,1.49],[0.001,1.5]])
     : [[0.001,0.86],[0.16,0.88],[0.172,0.98],[0.158,1.12],[0.178,1.28],[0.19,1.40],[0.15,1.47],[0.06,1.51],[0.001,1.52]];
-  const torsoMat = role === 'chayakkaran' ? M(0xf4f1e8) : role === 'karavakkari' ? M(0xa61e24, { roughness: 0.6 }) : M(0xffffff, { roughness: 0.8, map: shirtTex(color, 'vice') });
+  const torsoMat = role === 'chayakkaran' ? M(0xf4f1e8) : role === 'karavakkari' ? M(0xa61e24, { roughness: 0.6 }) : (look.plain ? M(color, { roughness: 0.8 }) : M(0xffffff, { roughness: 0.8, map: shirtTex(color, 'vice') }));
   const torso = add(body, G('torso' + isF + mature, () => new THREE.LatheGeometry(prof.map(p => new THREE.Vector2(p[0], p[1])), 22)), torsoMat, 0, 0, 0);
   torso.scale.z = 0.7;
   [-1, 1].forEach(s => add(body, sph(0.058, 10, 8), torsoMat, s * sh, shY - 0.035, 0));
@@ -3063,7 +3116,7 @@ function makeAvatarMesh(gender, outfitColor, hairStyle, role, look) {
     arms.push(pv); elbows.push(fa);
   });
 
-  const legs = [], legMat = (isF || role === 'chayakkaran') ? skin : M(look.pants !== undefined ? look.pants : 0x2e2e38);
+  const legs = [], legMat = ((isF && !cd) || role === 'chayakkaran') ? skin : M(look.pants !== undefined ? look.pants : 0x2e2e38);
   const footMat = role === 'chayakkaran' ? M(0x6b4a2a) : shoeMatShared;
   [-1, 1].forEach(s => {
     const pv = new THREE.Group(); pv.position.set(s * hipX, hipY, 0); body.add(pv);
@@ -3089,12 +3142,13 @@ function makeAvatarMesh(gender, outfitColor, hairStyle, role, look) {
     add(body, new THREE.TorusGeometry(0.33, 0.012, 6, 28), gold, 0, 0.28, 0).rotation.x = Math.PI / 2;
     const sash = new THREE.Group(); sash.position.set(0, 1.22, 0); sash.scale.set(1, 1, 0.7); sash.rotation.z = 0.8; body.add(sash);
     add(sash, new THREE.TorusGeometry(0.175, 0.02, 8, 24), M(0xf2c230), 0, 0, 0).rotation.x = Math.PI / 2;
-  } else if (isF) {
+  } else if (isF && !cd) {
     add(body, cyl(0.17, 0.27, 0.46, 18), M(0xffffff, { roughness: 0.8, map: shirtTex(color, 'vice') }), 0, 0.7, 0);
   }
   if (look.h) group.scale.setScalar(look.h); if (look.w) body.scale.x *= look.w;
   group.userData = { legs, arms, elbows, knees, body, head, emote: null };
   group.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  if (cd) applyCharacter(group, look.char);
   attachGlbBody(group, gender);
   return group;
 }
@@ -3703,7 +3757,7 @@ function enterCity() {
   const firstTime = auth.loggedIn && !auth.profile;
   scene.remove(myAvatar);
   if (myRole === 'chayakkaran') myGender = 'male'; else if (myRole === 'karavakkari') myGender = 'female';
-  myAvatar = makeAvatarMesh(myGender, myOutfitColor, myHairStyle, myRole);
+  myAvatar = makeAvatarMesh(myGender, myOutfitColor, myHairStyle, myRole, charLook(window._myChar, myRole));
   if (myRole === 'chayakkaran') { myAvatar.position.set(-10, 0.27, 10.8); myAvatar.rotation.y = Math.PI; camYaw = Math.PI; }
   else if (myRole === 'karavakkari') { myAvatar.position.set(-6, 0.27, -5.5); camYaw = 0; }
   scene.add(myAvatar);
@@ -3822,7 +3876,7 @@ socket.on('roleResult', ({ role, denied }) => {
   if (denied) {
     showToast('That role was just taken — you joined as a visitor'); myRole = null;
     const pos = myAvatar.position.clone(), ry = myAvatar.rotation.y; scene.remove(myAvatar);
-    myAvatar = makeAvatarMesh(myGender, myOutfitColor, myHairStyle, null); myAvatar.position.copy(pos); myAvatar.rotation.y = ry; scene.add(myAvatar);
+    myAvatar = makeAvatarMesh(myGender, myOutfitColor, myHairStyle, null, charLook(window._myChar, null)); myAvatar.position.copy(pos); myAvatar.rotation.y = ry; scene.add(myAvatar);
   } else if (role === 'chayakkaran') showToast('🍵 You are the Chayakkadakkaran! Customers tip you when they buy.');
   else if (role === 'karavakkari') showToast('🥛 You are Karavakkari chechi! Customers tip you when they buy.');
 });
@@ -3968,7 +4022,7 @@ function renderInventory() {
 }
 
 function addOtherPlayer(p) {
-  const group = makeAvatarMesh(p.gender, p.outfitColor, p.hairStyle, p.role);
+  const group = makeAvatarMesh(p.gender, p.outfitColor, p.hairStyle, p.role, charLook(p.charId, p.role));
   const label = makeLabel(p.name + (p.role === 'chayakkaran' ? ' 🍵' : p.role === 'karavakkari' ? ' 🥛' : ''), p.username ? '@' + p.username : null);
   group.add(label);
   scene.add(group);
@@ -4498,7 +4552,7 @@ socket.on('disconnect', () => { if (privScene) { leavePrivateScene(null); cleanu
 function rebuildMyAvatar() {
   const pos = myAvatar.position.clone(), ry = myAvatar.rotation.y, vis = myAvatar.visible;
   scene.remove(myAvatar);
-  myAvatar = makeAvatarMesh(myGender, myOutfitColor, myHairStyle, myRole);
+  myAvatar = makeAvatarMesh(myGender, myOutfitColor, myHairStyle, myRole, charLook(window._myChar, myRole));
   myAvatar.position.copy(pos); myAvatar.rotation.y = ry; myAvatar.visible = vis;
   scene.add(myAvatar);
 }
@@ -4826,7 +4880,7 @@ addEventListener('resize', () => {
 /* ---- Mobile UI: on small screens the tool buttons move into one Menu panel ---- */
 (function mobileUi() {
   const mq = matchMedia('(max-width:700px)'), menu = document.getElementById('mobile-menu'), tg = document.getElementById('menu-toggle');
-  const ids = ['account-pill', 'carshop-btn', 'radio-menu-btn', 'radio-next-btn', 'map-btn', 'stats-btn', 'shop-btn', 'inventory-btn', 'private-btn', 'emote-dance', 'emote-laugh', 'emote-aiyyo'], home = {}, LAB = { 'emote-dance': '💃 Dance', 'emote-laugh': '😂 Laugh', 'emote-aiyyo': '😱 Aiyyo' };
+  const ids = ['account-pill', 'carshop-btn', 'char-btn', 'radio-menu-btn', 'radio-next-btn', 'map-btn', 'stats-btn', 'shop-btn', 'inventory-btn', 'private-btn', 'emote-dance', 'emote-laugh', 'emote-aiyyo'], home = {}, LAB = { 'emote-dance': '💃 Dance', 'emote-laugh': '😂 Laugh', 'emote-aiyyo': '😱 Aiyyo' };
   ids.forEach(id => { const el = document.getElementById(id); if (el) home[id] = { el, parent: el.parentNode, next: el.nextSibling, txt: el.textContent }; });
   function layout() {
     if (mq.matches) Object.entries(home).forEach(([id, h]) => { menu.appendChild(h.el); if (LAB[id]) h.el.textContent = LAB[id]; });
@@ -4931,6 +4985,76 @@ function crashCheck(c, ox, oz) {   // driving into a house, another vehicle, a p
     showToast('💥 Crash!'); SND.crash(earVol(p.x, p.z, 30)); socket.emit('emote', { type: 'aiyyo' });
   }
 }
+/* ---- Stage 1+2: saved character selection (full-screen, 3D preview) + server-verified playtime ---- */
+const $c = (id) => document.getElementById(id);
+window._prog = { seconds: 0, policeUnlocked: false, required: 1800 }; window._myChar = null;
+let coR = null, coScene, coCam, coAv = null, coYaw = 0.5, coOn = false, coSel = null, _charAsked = false, coDrag = null;
+function coInit() {
+  if (coR) return;
+  coR = new THREE.WebGLRenderer({ canvas: $c('co-canvas'), antialias: true, alpha: true }); coR.setPixelRatio(Math.min(devicePixelRatio, 2));
+  coScene = new THREE.Scene(); coScene.add(new THREE.HemisphereLight(0xffffff, 0x887766, 1.15));
+  const dl = new THREE.DirectionalLight(0xffffff, 0.9); dl.position.set(3, 5, 4); coScene.add(dl);
+  const pl = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 0.9, 0.08, 32), new THREE.MeshStandardMaterial({ color: 0x2a1840 })); pl.position.y = -0.04; coScene.add(pl);
+  coCam = new THREE.PerspectiveCamera(32, 1, 0.1, 50); coCam.position.set(0, 1.15, 5); coCam.lookAt(0, 0.92, 0);
+  const cv = $c('co-canvas');
+  cv.addEventListener('pointerdown', e => { coDrag = e.clientX; cv.setPointerCapture(e.pointerId); });
+  cv.addEventListener('pointermove', e => { if (coDrag !== null) { coYaw += (e.clientX - coDrag) * 0.012; coDrag = e.clientX; } });
+  ['pointerup', 'pointercancel'].forEach(ev => cv.addEventListener(ev, () => { coDrag = null; }));
+}
+function coLoop() {
+  if (!coOn) return; requestAnimationFrame(coLoop);
+  const cv = $c('co-canvas'), w = cv.clientWidth, h = cv.clientHeight, pr = coR.getPixelRatio();
+  if (cv.width !== Math.round(w * pr) || cv.height !== Math.round(h * pr)) { coR.setSize(w, h, false); coCam.aspect = w / h; coCam.updateProjectionMatrix(); }
+  if (coDrag === null) coYaw += 0.006;
+  if (coAv) { coAv.rotation.y = coYaw; tickAvatar(coAv, performance.now()); }
+  coR.render(coScene, coCam);
+}
+function coShow(id) {
+  coSel = id; const d = CHAR_DEFS[id], P = window._prog, locked = id === 'police' && !P.policeUnlocked;
+  if (coAv) coScene.remove(coAv);
+  coAv = makeAvatarMesh(myGender || 'male', '#ffffff', myHairStyle || 'short', null, { char: id }); coScene.add(coAv);
+  $c('co-name').textContent = d.icon + ' ' + d.name; $c('co-desc').textContent = d.desc;
+  const req = Math.round(P.required / 60) || 30, mins = Math.min(req, Math.floor(P.seconds / 60));
+  $c('co-lock').innerHTML = locked ? '🔒 Police Officer: ' + mins + ' / ' + req + ' minutes completed<div class="co-prog"><i style="width:' + Math.min(100, P.seconds / P.required * 100) + '%"></i></div><div style="color:var(--muted);font-weight:500;margin-top:4px">Play actively for ' + req + ' minutes to unlock it for good.</div>' : (window._myChar === id ? '✅ Your current character' : '');
+  $c('co-confirm').disabled = locked || window._myChar === id; $c('co-confirm').textContent = locked ? '🔒 Locked' : (window._myChar === id ? 'Selected' : 'Select this character');
+  document.querySelectorAll('.co-card').forEach(b => b.classList.toggle('sel', b.dataset.c === id));
+}
+function openChar(first) {
+  if (!inGame()) return;
+  if (!auth.loggedIn) { showToast('Log in to choose and save a character'); requireLogin('x', () => openChar(first)); return; }
+  coInit(); $c('co-close').style.display = first ? 'none' : '';
+  const list = $c('co-list'); list.innerHTML = '';
+  Object.entries(CHAR_DEFS).forEach(([id, d]) => {
+    const lock = id === 'police' && !window._prog.policeUnlocked, b = document.createElement('button');
+    b.type = 'button'; b.className = 'co-card' + (lock ? ' locked' : ''); b.dataset.c = id; b.innerHTML = '<span class="ic">' + (lock ? '🔒' : d.icon) + '</span>' + d.name; b.onclick = () => coShow(id); list.appendChild(b);
+  });
+  $c('char-overlay').classList.add('open'); coOn = true; coShow(window._myChar || 'common_man'); coLoop();
+}
+function closeChar() { coOn = false; $c('char-overlay').classList.remove('open'); }
+$c('co-close').onclick = closeChar;
+$c('co-confirm').onclick = () => {
+  const id = coSel, btn = $c('co-confirm'); btn.disabled = true;
+  socket.emit('selectCharacter', { charId: id }, (r) => {
+    if (r && r.ok) { window._myChar = id; window._prog = Object.assign(window._prog, r.state); rebuildMyAvatar(); closeChar(); showToast('✅ ' + CHAR_DEFS[id].name + ' selected - saved to your account'); }
+    else { showToast((r && r.error) || 'Could not save'); btn.disabled = false; }
+  });
+};
+$c('char-btn').onclick = () => openChar(false);
+$c('set-char-btn').onclick = () => { $c('stats-overlay').style.display = 'none'; openChar(false); };
+socket.on('progressState', (s) => {
+  const was = window._prog.policeUnlocked; window._prog = { seconds: s.seconds, policeUnlocked: s.policeUnlocked, required: s.required || 1800 };
+  if (s.policeUnlocked && !was && _charAsked) showToast('👮 Police Officer unlocked! Choose it in ☰ Menu → Character');
+  _charAsked = true;
+  if (s.charId && s.charId !== window._myChar) { window._myChar = s.charId; if (!myRole) rebuildMyAvatar(); }
+  if (!s.charId && !coOn) setTimeout(() => { if (!window._myChar && inGame() && !coOn) openChar(true); }, 600);
+  else if (coOn) coShow(coSel || window._myChar || 'common_man');
+});
+socket.on('playerChar', ({ id, charId }) => {
+  if (id === socket.id) return; const o = others[id]; if (!o) return;
+  const keep = Object.assign({}, o.target, { id, name: o.name, username: o.username, role: o.role, charId });
+  const pos = o.group.position.clone(), ry = o.group.rotation.y, vis = o.group.visible; scene.remove(o.group); delete others[id];
+  addOtherPlayer(keep); others[id].group.position.copy(pos); others[id].group.rotation.y = ry; others[id].group.visible = vis;
+});
 </script>
 </body>
 </html>
