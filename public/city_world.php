@@ -2705,7 +2705,7 @@ function cartCall() { if (drivingCarId && cars[drivingCarId] && cars[drivingCarI
 document.getElementById('cart-call').onclick = cartCall;
 addEventListener('keydown', e => {
   if (/INPUT|TEXTAREA/.test((e.target.tagName || ''))) return;
-  const k = e.key.toLowerCase();
+  const k = (e.key || '').toLowerCase();
   if (k === 'r') radioToggle(); else if (k === 'n') radioStep(1); else if (k === 'p') radioStep(-1); else if (k === 'h') cartCall();
 });
 
@@ -2755,7 +2755,7 @@ document.getElementById('kiss-ignore').onclick = hideKissPrompt;
 document.getElementById('kiss-block').onclick = () => { socket.emit('setNoKiss', true); hideKissPrompt(); showToast('🚫 Kisses are off — others can no longer kiss you'); };
 addEventListener('keydown', e => {
   if (/INPUT|TEXTAREA/.test((e.target.tagName || ''))) return;
-  const k = e.key.toLowerCase();
+  const k = (e.key || '').toLowerCase();
   if (k === 'k') doKiss(); else if (k === 'x') doEmote('dance'); else if (k === 'l') doEmote('laugh'); else if (k === 'z') doEmote('aiyyo'); else if (k === 'j') doHoldHands();
   else if (k === 'v') { document.body.classList.toggle('novintage'); showToast(document.body.classList.contains('novintage') ? '🎞️ 80s film look off' : '🎞️ 80s film look on'); }
 });
@@ -3399,8 +3399,8 @@ if (handoffName && !auth.loggedIn) document.getElementById('name-input').value =
    ========================================================= */
 const keys = {};
 const KEYALIAS = { arrowup: 'w', arrowdown: 's', arrowleft: 'a', arrowright: 'd' };
-addEventListener('keydown', e => { const k = e.key.toLowerCase(); keys[KEYALIAS[k] || k] = true; if (KEYALIAS[k] && !/INPUT|TEXTAREA/.test((e.target.tagName || ''))) e.preventDefault(); });
-addEventListener('keyup', e => { const k = e.key.toLowerCase(); keys[KEYALIAS[k] || k] = false; });
+addEventListener('keydown', e => { const k = (e.key || '').toLowerCase(); keys[KEYALIAS[k] || k] = true; if (KEYALIAS[k] && !/INPUT|TEXTAREA/.test((e.target.tagName || ''))) e.preventDefault(); });
+addEventListener('keyup', e => { const k = (e.key || '').toLowerCase(); keys[KEYALIAS[k] || k] = false; });
 
 let camYaw = 0, camPitch = 0.15, dragging = false, lastX = 0, lastY = 0;
 function startDrag(x,y){ dragging = true; lastX = x; lastY = y; }
@@ -3454,7 +3454,7 @@ function findNearbyCar() {
 }
 
 addEventListener('keydown', (e) => {
-  if (e.key.toLowerCase() !== 'e') return;
+  if ((e.key || '').toLowerCase() !== 'e') return;
   if (/INPUT|TEXTAREA/.test((e.target.tagName || ''))) return;
   if (sitting || (nearBench && !drivingCarId)) toggleSit(); else triggerVehicleAction();
 });
@@ -3692,7 +3692,7 @@ function openShop() {
 }
 shopPrompt.addEventListener('click', openShop);
 addEventListener('keydown', e => {
-  if (e.key.toLowerCase() === 'b' && !/INPUT|TEXTAREA/.test((e.target.tagName || ''))) openShop();
+  if ((e.key || '').toLowerCase() === 'b' && !/INPUT|TEXTAREA/.test((e.target.tagName || ''))) openShop();
 });
 
 function checkDeliveryProximity() {
