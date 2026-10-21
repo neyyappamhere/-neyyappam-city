@@ -2424,6 +2424,77 @@ let riverBoat = null, riverNet = null, riverNetHang = null;
 })();
 
 buildPalms();
+/* ---- Kerala bus stops (KSRTC-style shelters you can sit in) + flex ad boards (ad-revenue spots: edit public/ads.json) ---- */
+const BUS_STOPS = []; window.BUS_STOPS = BUS_STOPS;
+let ADS = [{ brand: 'neyyappam.com', line1: "You won't die single.", line2: 'Meet people. Make friends. Find love.', c1: '#FE019A', c2: '#ff80d5' }];
+const AD_REG = [];
+function rrect(g, x, y, w, h, r) { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); }
+function drawAd(cv, ad) {
+  const g = cv.getContext('2d'), W = cv.width, H = cv.height; g.clearRect(0, 0, W, H);
+  if (!ad) {   // empty slot: an invitation to advertise
+    const gr = g.createLinearGradient(0, 0, W, H); gr.addColorStop(0, '#1b1030'); gr.addColorStop(1, '#3a1a5a'); g.fillStyle = gr; g.fillRect(0, 0, W, H);
+    g.strokeStyle = '#FFD700'; g.lineWidth = H * 0.016; g.setLineDash([H * 0.05, H * 0.03]); g.strokeRect(H * 0.05, H * 0.05, W - H * 0.1, H - H * 0.1); g.setLineDash([]);
+    g.textAlign = 'center'; g.fillStyle = '#FFD700'; g.font = '800 ' + H * 0.2 + "px Syne,'Space Grotesk',sans-serif"; g.fillText('YOUR AD HERE', W / 2, H * 0.52);
+    g.fillStyle = '#fff'; g.font = '600 ' + H * 0.065 + "px 'Space Grotesk',sans-serif"; g.fillText('Advertise your brand on Neyyappam City', W / 2, H * 0.68); return;
+  }
+  const gr = g.createLinearGradient(0, 0, W, H); gr.addColorStop(0, ad.c1 || '#FE019A'); gr.addColorStop(1, ad.c2 || '#ff80d5'); g.fillStyle = gr; g.fillRect(0, 0, W, H);
+  g.fillStyle = 'rgba(255,255,255,0.10)'; g.beginPath(); g.arc(W * 0.92, H * 0.05, H * 0.55, 0, 7); g.fill();
+  const bs = H * 0.5, bx = W * 0.07, by = H * 0.2;   // logo badge
+  g.save(); g.shadowColor = 'rgba(0,0,0,.25)'; g.shadowBlur = H * 0.04; g.fillStyle = '#fff'; rrect(g, bx, by, bs, bs, bs * 0.22); g.fill(); g.restore();
+  if (ad._img) g.drawImage(ad._img, bx + bs * 0.12, by + bs * 0.12, bs * 0.76, bs * 0.76);
+  else { const cx = bx + bs / 2, cy = by + bs / 2, s = bs; g.fillStyle = '#c2561f'; g.beginPath(); g.moveTo(cx, cy + s * 0.27); g.bezierCurveTo(cx - s * 0.5, cy - s * 0.02, cx - s * 0.3, cy - s * 0.4, cx, cy - s * 0.13); g.bezierCurveTo(cx + s * 0.3, cy - s * 0.4, cx + s * 0.5, cy - s * 0.02, cx, cy + s * 0.27); g.fill(); }
+  const tx = bx + bs + W * 0.05, mw = W - tx - W * 0.04; g.textAlign = 'left'; g.fillStyle = '#fff';
+  g.font = '800 ' + H * 0.135 + "px Syne,'Space Grotesk',sans-serif"; g.fillText(ad.brand || '', tx, H * 0.36, mw);
+  g.font = '800 ' + H * 0.1 + "px 'Space Grotesk',sans-serif"; g.fillText(ad.line1 || '', tx, H * 0.55, mw);
+  g.font = '500 ' + H * 0.062 + "px 'Space Grotesk',sans-serif"; g.fillStyle = 'rgba(255,255,255,.92)'; g.fillText(ad.line2 || '', tx, H * 0.69, mw);
+  g.fillStyle = 'rgba(0,0,0,.28)'; g.fillRect(0, H * 0.88, W, H * 0.12); g.fillStyle = '#fff'; g.textAlign = 'center'; g.font = '600 ' + H * 0.05 + "px 'Space Grotesk',sans-serif"; g.fillText('Advertise your brand here  •  Neyyappam City', W / 2, H * 0.955);
+}
+function adTexture(resolve) { const cv = document.createElement('canvas'); cv.width = 1024; cv.height = 512; const tex = new THREE.CanvasTexture(cv); AD_REG.push({ cv, tex, resolve }); drawAd(cv, resolve()); return tex; }
+function redrawAds() { AD_REG.forEach(e => { drawAd(e.cv, e.resolve()); e.tex.needsUpdate = true; }); }
+fetch('ads.json?v=' + Date.now()).then(r => r.ok ? r.json() : null).then(j => {
+  if (Array.isArray(j) && j.length) { ADS = j; ADS.forEach(a => { if (a.logo) { const im = new Image(); im.crossOrigin = 'anonymous'; im.onload = () => { a._img = im; redrawAds(); }; im.src = a.logo; } }); redrawAds(); }
+}).catch(() => {});
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(redrawAds);
+function addAdBoard(x, z, rotY, slot) {
+  const g = new THREE.Group(); g.position.set(x, 0.25, z); g.rotation.y = rotY; scene.add(g);
+  const steel = kMat(0x5b6168, { metalness: 0.3, roughness: 0.6 }), add = (geo, mat, px, py, pz) => { const m = new THREE.Mesh(geo, mat); m.position.set(px, py, pz); g.add(m); return m; };
+  [-3.5, 3.5].forEach(px => { add(new THREE.CylinderGeometry(0.13, 0.17, 9, 10), steel, px, 4.5, 0); add(new THREE.BoxGeometry(0.6, 0.15, 0.6), steel, px, 0.08, 0); });
+  add(new THREE.BoxGeometry(8.5, 4.5, 0.22), kMat(0xdfe2e6), 0, 6.9, 0);
+  add(new THREE.BoxGeometry(8.7, 0.12, 0.5), steel, 0, 9.3, 0.1);
+  add(new THREE.PlaneGeometry(8.1, 4.05), new THREE.MeshBasicMaterial({ map: adTexture(() => ADS[slot] || (slot < 2 ? ADS[0] : null)) }), 0, 6.9, 0.12);
+  add(new THREE.PlaneGeometry(8.1, 4.05), kMat(0x8a8f96, { side: THREE.DoubleSide }), 0, 6.9, -0.12);
+  [-2.8, 0, 2.8].forEach(lx => add(new THREE.BoxGeometry(0.5, 0.18, 0.3), kMat(0xfff1c1, { emissive: 0xffe9a8, emissiveIntensity: 0.9 }), lx, 9.45, 0.45));
+}
+[[-2, -3], [0, -2], [2, 2], [-3, 1], [1, 0], [-2, 2]].forEach(([gx, gz], i) => addAdBoard(gx * BLOCK + BLOCK / 2, gz * BLOCK + BLOCK / 2 + 6.5, 0, i));
+function busSignTex() {
+  const cv = document.createElement('canvas'); cv.width = cv.height = 256; const t = new THREE.CanvasTexture(cv);
+  const draw = () => { const g = cv.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, 256, 256); g.fillStyle = '#c1121f'; g.fillRect(0, 0, 256, 82); g.fillStyle = '#ffc20e'; g.fillRect(0, 82, 256, 14);
+    g.textAlign = 'center'; g.fillStyle = '#fff'; g.font = '800 58px sans-serif'; g.fillText('KSRTC', 128, 62); g.fillStyle = '#000'; g.font = '78px serif'; g.fillText('🚌', 128, 178);
+    g.fillStyle = '#1d4f8a'; g.font = '700 30px sans-serif'; g.fillText('BUS STOP', 128, 216); g.font = "700 26px 'Noto Sans Malayalam',sans-serif"; g.fillText('ബസ് സ്റ്റോപ്പ്', 128, 248); t.needsUpdate = true; };
+  draw(); if (document.fonts && document.fonts.ready) document.fonts.ready.then(draw); return t;
+}
+function addBusStop(x, z, rotY, i) {
+  const g = new THREE.Group(); g.position.set(x, 0.25, z); g.rotation.y = rotY; scene.add(g);
+  const steel = kMat(0x4f565e, { metalness: 0.4, roughness: 0.5 }), wood = kMat(0x8b5a2b), add = (geo, mat, px, py, pz) => { const m = new THREE.Mesh(geo, mat); m.position.set(px, py, pz); g.add(m); return m; };
+  [[-1.9, -0.6], [1.9, -0.6], [-1.9, 0.6], [1.9, 0.6]].forEach(([px, pz]) => add(new THREE.CylinderGeometry(0.06, 0.06, 2.6, 8), steel, px, 1.3, pz));
+  add(new THREE.BoxGeometry(4.4, 0.1, 1.9), kMat(0x8f959c, { metalness: 0.3, roughness: 0.7 }), 0, 2.62, 0).rotation.x = 0.07;
+  add(new THREE.BoxGeometry(4.5, 0.22, 0.08), kMat(0xc1121f), 0, 2.55, 0.97); add(new THREE.BoxGeometry(4.5, 0.06, 0.08), kMat(0xffc20e), 0, 2.42, 0.97);
+  add(new THREE.PlaneGeometry(2.3, 1.9), kMat(0xbfe3f2, { transparent: true, opacity: 0.28, side: THREE.DoubleSide }), -0.8, 1.3, -0.6);
+  add(new THREE.BoxGeometry(1.6, 0.85, 0.04), steel, 1.35, 1.45, -0.6);
+  add(new THREE.PlaneGeometry(1.5, 0.75), new THREE.MeshBasicMaterial({ map: adTexture(() => ADS[i % ADS.length]) }), 1.35, 1.45, -0.57);
+  add(new THREE.BoxGeometry(2.7, 0.07, 0.45), wood, 0, 0.5, -0.2); add(new THREE.BoxGeometry(2.7, 0.3, 0.05), wood, 0, 0.86, -0.42);
+  [-1.2, 1.2].forEach(px => add(new THREE.BoxGeometry(0.06, 0.5, 0.4), steel, px, 0.25, -0.2));
+  add(new THREE.CylinderGeometry(0.22, 0.2, 0.55, 12), kMat(0x2f6b3a), -1.6, 0.28, 0.4);
+  add(new THREE.CylinderGeometry(0.04, 0.04, 3.1, 8), steel, 2.8, 1.55, 0.5);
+  add(new THREE.PlaneGeometry(0.9, 0.9), new THREE.MeshBasicMaterial({ map: busSignTex(), side: THREE.DoubleSide }), 2.8, 2.65, 0.5);
+  add(new THREE.PlaneGeometry(1.6, 0.4), new THREE.MeshBasicMaterial({ map: makeSignTex('കോഴിക്കോട് ↔ കണ്ണൂർ', '#ffffff', '#1d4f8a'), side: THREE.DoubleSide }), 2.8, 1.95, 0.5);
+  BENCHES.push({ x, z: z + 0.2 }); BUS_STOPS.push({ x, z });
+}
+[[-3, -2], [-2, 1], [1, -3], [2, -1], [1, 2], [-3, 2]].forEach(([gx, gz], i) => {
+  const cx = gx * BLOCK + BLOCK / 2, cz = gz * BLOCK + BLOCK / 2; addBusStop(cx, cz - 6.3, Math.PI, i);
+  const bay = new THREE.Mesh(new THREE.BoxGeometry(8, 0.02, 0.2), kMat(0xffc20e)); bay.position.set(cx, 0.04, cz - 7.7); scene.add(bay);
+});
+
 
 /* =========================================================
    COWSHED (പശുത്തൊഴുത്ത്) + milk stall, SOUND ENGINE, ANIMALS, shared RADIO
@@ -3158,6 +3229,13 @@ function tickAvatar(g, now) {
   const p = g.position, sp = u.lx === undefined ? 0 : Math.hypot(p.x - u.lx, p.z - u.lz);
   u.lx = p.x; u.lz = p.z; u.sp = (u.sp || 0) * 0.75 + sp * 0.25; u.ph = (u.ph || 0) + (u.walkAmp === undefined ? sp * 9 : 0);
   if (u.glb) { driveGlb(u, now); return; }
+  if (p.y < -0.5 && u.walkAmp === undefined) {   // swimming: face-down freestyle stroke with a flutter kick
+    const T = now / 1000, k = 0.6 + Math.min(1, u.sp * 8), s1 = Math.sin(T * 5 * k);
+    u.body.rotation.set(1.25, 0, 0); u.body.position.y = 0.58 + Math.sin(T * 3) * 0.03;
+    u.arms[0].rotation.x = -2.3 + s1 * 1.1; u.arms[1].rotation.x = -2.3 - s1 * 1.1; u.arms[0].rotation.z = -0.1; u.arms[1].rotation.z = 0.1;
+    u.legs[0].rotation.x = Math.sin(T * 10 * k) * 0.35; u.legs[1].rotation.x = -Math.sin(T * 10 * k) * 0.35;
+    u.knees[0].rotation.x = u.knees[1].rotation.x = 0.1; u.elbows.forEach(f => { f.rotation.x = -0.15; }); return;
+  }
   if (u.walkAmp !== undefined) { u.ph += Math.min(0.1, (now - (u.pn || now)) / 1000) * 7; u.pn = now; }
   const amp = u.walkAmp !== undefined ? u.walkAmp : Math.min(0.75, u.sp * 6), la = Math.sin(u.ph) * amp, T = now / 1000;
   let a0x = -la * 0.85, a1x = la * 0.85, a0z = -0.07, a1z = 0.07, bob = Math.abs(Math.sin(u.ph)) * 0.02 * amp * 4 + Math.sin(T * 2) * 0.003;
@@ -3264,6 +3342,7 @@ function updateFight() {
     if (p.hp === undefined) p.hp = 100;
     const g = p.g;
     if (p.bubble) { p.bubble.visible = now < p.sayUntil && !privScene; p.bubble.position.set(g.position.x, g.position.y + (p.state === 'down' ? 1.1 : 2.4), g.position.z); }
+    if (p.bar) { p.bar.visible = now < p.barUntil && !privScene; p.bar.position.set(g.position.x, g.position.y + (p.state === 'down' ? 0.9 : 2.1), g.position.z); }
     if (p.state === 'fight') {
       const dx = me.x - g.position.x, dz = me.z - g.position.z, d = Math.hypot(dx, dz) || 1; g.rotation.y = Math.atan2(dx, dz);
       if (d > 2.0) { g.position.x += dx / d * 2.6 * dt; g.position.z += dz / d * 2.6 * dt; g.userData.walkAmp = 0.7; }
@@ -4227,6 +4306,7 @@ function drawMap() {
   { const t = worldToMap(TEA_POS.x, TEA_POS.z); mapCtx.fillText('🍵', t.px, t.py);
     const s = worldToMap(SHOP_POS.x, SHOP_POS.z); mapCtx.fillText('🛒', s.px, s.py);
     const m = worldToMap(MILK_POS.x, MILK_POS.z); mapCtx.fillText('🥛', m.px, m.py);
+    BUS_STOPS.forEach(b => { const q = worldToMap(b.x, b.z); mapCtx.fillText('🚏', q.px, q.py); });
     Object.values(cars).forEach(c => { if (c.isCart) { const q = worldToMap(c.group.position.x, c.group.position.z); mapCtx.fillText('🐂', q.px, q.py); } }); }
   const me = worldToMap(myAvatar.position.x, myAvatar.position.z);
   mapCtx.fillStyle = '#FE019A';
@@ -4903,7 +4983,7 @@ addEventListener('resize', () => {
     x.fillStyle = '#6b6f78';
     for (let i = -GRID / 2; i <= GRID / 2; i++) { x.fillRect(i * BLOCK - ROAD_W / 2, -GRID * BLOCK / 2 - 3, ROAD_W, GRID * BLOCK + 6); x.fillRect(-GRID * BLOCK / 2 - 3, i * BLOCK - ROAD_W / 2, GRID * BLOCK + 6, ROAD_W); }
     x.fillStyle = '#2a7fd0'; x.fillRect(RIVER.x1, -88, RIVER.x2 - RIVER.x1, 176);
-    dot(SHOP_POS.x, SHOP_POS.z, 3, '#ffd700'); dot(TEA_POS.x, TEA_POS.z, 3, '#c98a3a'); dot(MILK_POS.x, MILK_POS.z, 3, '#ffffff');
+    dot(SHOP_POS.x, SHOP_POS.z, 3, '#ffd700'); BUS_STOPS.forEach(b => dot(b.x, b.z, 2.6, '#4aa3ff')); dot(TEA_POS.x, TEA_POS.z, 3, '#c98a3a'); dot(MILK_POS.x, MILK_POS.z, 3, '#ffffff');
     if (typeof myWaypoint !== 'undefined' && myWaypoint) dot(myWaypoint.x, myWaypoint.z, 3.5, '#ffee00');
     Object.values(others).forEach(o => { if (o.group.visible) dot(o.group.position.x, o.group.position.z, 2.6, '#7ad7ff'); });
     x.setTransform(1, 0, 0, 1, 0, 0); x.fillStyle = '#fe019a'; x.strokeStyle = '#fff'; x.lineWidth = 2;
@@ -4970,20 +5050,32 @@ function buildRooftop(g) {
 Object.assign(PRIVATE_SCENES, { backwaters: buildBackwaters, munnar: buildMunnar, rooftop: buildRooftop });
 PRIV_PLACES.push({ id: 'backwaters', name: 'Houseboat', emoji: '🛶' }, { id: 'munnar', name: 'Munnar Tea Hills', emoji: '🍃' }, { id: 'rooftop', name: 'Night Rooftop', emoji: '🌃' });
 let _crashAt = 0;
-function crashCheck(c, ox, oz) {   // driving into a house, another vehicle, a pedestrian or a player: bounce back, lose aura, and shout
+function auraBar(q, pct) {
+  if (!q.bar) { const c = document.createElement('canvas'); c.width = 96; c.height = 16; const t = new THREE.CanvasTexture(c), sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, transparent: true, depthTest: false })); sp.scale.set(1.2, 0.2, 1); sp.renderOrder = 21; sp.visible = false; sp.userData = { c, t }; scene.add(sp); q.bar = sp; }
+  const { c, t } = q.bar.userData, x = c.getContext('2d'); x.clearRect(0, 0, 96, 16); x.fillStyle = 'rgba(0,0,0,.6)'; x.fillRect(0, 0, 96, 16);
+  x.fillStyle = pct > 60 ? '#00f593' : pct > 30 ? '#ffb020' : '#ff4d6d'; x.fillRect(2, 2, 92 * Math.max(0, pct) / 100, 12); t.needsUpdate = true; q.barUntil = performance.now() + 3500;
+}
+function hitPed(q, sp, from) {   // a vehicle hit a pedestrian: their aura drops, they get knocked back, and at 0 they go down
+  if (q.hp === undefined) q.hp = 100;
+  q.hp -= Math.min(60, 20 + sp * 120); auraBar(q, q.hp);
+  const dx = q.g.position.x - from.x, dz = q.g.position.z - from.z, d = Math.hypot(dx, dz) || 1; q.g.position.x += dx / d * 1.3; q.g.position.z += dz / d * 1.3;
+  if (q.hp <= 0) { q.state = 'down'; q.downUntil = performance.now() + 4500; say(q, 'down'); q.g.rotation.order = 'YXZ'; q.g.rotation.x = -Math.PI / 2; q.g.position.y = 0.15; }
+  else say(q, 'hit');
+}
+function crashCheck(c, ox, oz) {   // house / vehicle: driver loses aura. Pedestrian: THEIR aura drops. Player: they lose aura on their own screen.
   const p = c.group.position, sp = Math.abs(carSpeed), me = c.kind === 'bike' ? 0.9 : c.kind === 'cycle' ? 0.7 : c.isCart ? 1.8 : 1.3;
-  let hit = false;
-  for (const h of HOUSES) if (Math.hypot(p.x - h.x, p.z - h.z) < h.r + me * 0.6) { hit = true; break; }
-  if (!hit) for (const id in cars) { const o = cars[id]; if (o === c || o.isPlane) continue; const r = o.kind === 'bike' ? 0.9 : o.kind === 'cycle' ? 0.7 : o.isCart ? 1.8 : 1.3; if (Math.hypot(p.x - o.group.position.x, p.z - o.group.position.z) < (r + me) * 0.85) { hit = true; break; } }
-  if (!hit) for (const q of PEDS) if (q.g.visible && Math.hypot(p.x - q.g.position.x, p.z - q.g.position.z) < me * 0.6 + 0.6) { hit = true; break; }
-  if (!hit) for (const id in others) { const o = others[id].group; if (o.visible && Math.hypot(p.x - o.position.x, p.z - o.position.z) < me * 0.6 + 0.6) { hit = true; break; } }
-  if (!hit) return;
+  let solid = false, ped = null, ply = null;
+  for (const h of HOUSES) if (Math.hypot(p.x - h.x, p.z - h.z) < h.r + me * 0.6) { solid = true; break; }
+  if (!solid) for (const id in cars) { const o = cars[id]; if (o === c || o.isPlane) continue; const r = o.kind === 'bike' ? 0.9 : o.kind === 'cycle' ? 0.7 : o.isCart ? 1.8 : 1.3; if (Math.hypot(p.x - o.group.position.x, p.z - o.group.position.z) < (r + me) * 0.85) { solid = true; break; } }
+  if (!solid) for (const q of PEDS) if (q.g.visible && q.state !== 'down' && Math.hypot(p.x - q.g.position.x, p.z - q.g.position.z) < me * 0.6 + 0.6) { ped = q; break; }
+  if (!solid && !ped) for (const id in others) { const o = others[id].group; if (o.visible && Math.hypot(p.x - o.position.x, p.z - o.position.z) < me * 0.6 + 0.6) { ply = id; break; } }
+  if (!solid && !ped && !ply) return;
   p.x = ox; p.z = oz; carSpeed = -carSpeed * 0.3;
-  const now = performance.now();
-  if (sp > 0.06 && now > _crashAt) {
-    _crashAt = now + 1500; applyDamage(Math.min(40, (8 + sp * 100) * (c.kind === 'bike' || c.kind === 'cycle' ? 1.3 : 1)), 'crash');
-    showToast('💥 Crash!'); SND.crash(earVol(p.x, p.z, 30)); socket.emit('emote', { type: 'aiyyo' });
-  }
+  const now = performance.now(); if (sp <= 0.06 || now < _crashAt) return; _crashAt = now + 1500;
+  SND.crash(earVol(p.x, p.z, 30));
+  if (ped) { hitPed(ped, sp, p); showToast('💥 You hit a pedestrian!'); }
+  else if (ply) showToast('💥 You hit ' + (others[ply].name || 'a player') + '!');
+  else { applyDamage(Math.min(40, (8 + sp * 100) * (c.kind === 'bike' || c.kind === 'cycle' ? 1.3 : 1)), 'crash'); showToast('💥 Crash!'); socket.emit('emote', { type: 'aiyyo' }); }
 }
 /* ---- Stage 1+2: saved character selection (full-screen, 3D preview) + server-verified playtime ---- */
 const $c = (id) => document.getElementById(id);
